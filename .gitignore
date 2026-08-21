@@ -157,6 +157,10 @@ ENV/
 env.bak/
 venv.bak/
 
+# Local sync automation (machine-specific; deployment handles scheduling differently)
+sync/run_sync.sh
+sync/sync.log
+
 # Spyder project settings
 .spyderproject
 .spyproject
