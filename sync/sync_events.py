@@ -116,23 +116,37 @@ def upsert_venue(cur, venue):
     return cur.fetchone()[0]
 
 
+def categorize_age(ages):
+    """Buckets Edmtrain's free-form `ages` string into one of three fixed categories.
+
+    Keeps this mapping in one place so the API can filter on a plain equality/inclusion
+    check against age_category instead of parsing `ages` on every request.
+    """
+    if ages == "21+":
+        return "21+"
+    if ages in ("18+", "19+"):
+        return "18+"
+    return "Other"
+
+
 def upsert_event(cur, event, venue_id):
     cur.execute(
         """
         INSERT INTO events (
-            edmtrain_id, name, link, ages, festival_ind, livestream_ind,
+            edmtrain_id, name, link, ages, age_category, festival_ind, livestream_ind,
             electronic_genre_ind, other_genre_ind, event_date, start_time, end_time,
             created_date, venue_id
         )
         VALUES (
-            %(edmtrain_id)s, %(name)s, %(link)s, %(ages)s, %(festival_ind)s, %(livestream_ind)s,
-            %(electronic_genre_ind)s, %(other_genre_ind)s, %(event_date)s, %(start_time)s,
-            %(end_time)s, %(created_date)s, %(venue_id)s
+            %(edmtrain_id)s, %(name)s, %(link)s, %(ages)s, %(age_category)s, %(festival_ind)s,
+            %(livestream_ind)s, %(electronic_genre_ind)s, %(other_genre_ind)s, %(event_date)s,
+            %(start_time)s, %(end_time)s, %(created_date)s, %(venue_id)s
         )
         ON CONFLICT (edmtrain_id) DO UPDATE SET
             name = EXCLUDED.name,
             link = EXCLUDED.link,
             ages = EXCLUDED.ages,
+            age_category = EXCLUDED.age_category,
             festival_ind = EXCLUDED.festival_ind,
             livestream_ind = EXCLUDED.livestream_ind,
             electronic_genre_ind = EXCLUDED.electronic_genre_ind,
@@ -149,6 +163,7 @@ def upsert_event(cur, event, venue_id):
             "name": event.get("name"),
             "link": event.get("link"),
             "ages": event.get("ages"),
+            "age_category": categorize_age(event.get("ages")),
             "festival_ind": event.get("festivalInd", False),
             "livestream_ind": event.get("livestreamInd", False),
             "electronic_genre_ind": event.get("electronicGenreInd", False),
