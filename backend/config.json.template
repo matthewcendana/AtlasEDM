@@ -1,12 +1,15 @@
-// Template for config.json. Placeholders (__LIKE_THIS__) are filled in by
-// generate_config.py, which reads them from the repo's root .env file.
+// Template for config.json. Placeholders (${LIKE_THIS}) are filled in either by
+// generate_config.py (host runs, reads the repo's root .env file) or by
+// docker-entrypoint.sh via envsubst (container runs, where Docker Compose's
+// `env_file: .env` already injects these as real environment variables — no .env
+// parsing needed inside the container). One template, two interchangeable fillers.
 // Do not put real credentials in this file — it is committed to git.
 // The generated config.json (with real credentials) is gitignored.
 {
     "listeners": [
         {
             "address": "0.0.0.0",
-            "port": 8080,
+            "port": ${BACKEND_PORT},
             "https": false
         }
     ],
@@ -14,14 +17,24 @@
         {
             "name": "default",
             "rdbms": "postgresql",
-            "host": "__POSTGRES_HOST__",
-            "port": __POSTGRES_PORT__,
-            "dbname": "__POSTGRES_DB__",
-            "user": "__POSTGRES_USER__",
-            "passwd": "__POSTGRES_PASSWORD__",
+            "host": "${POSTGRES_HOST}",
+            "port": ${POSTGRES_PORT},
+            "dbname": "${POSTGRES_DB}",
+            "user": "${POSTGRES_USER}",
+            "passwd": "${POSTGRES_PASSWORD}",
             "is_fast": false,
             "number_of_connections": 1,
-            "timeout": -1.0
+            "timeout": 5.0
+        }
+    ],
+    "redis_clients": [
+        {
+            "name": "default",
+            "host": "${REDIS_HOST}",
+            "port": ${REDIS_PORT},
+            "is_fast": false,
+            "number_of_connections": 1,
+            "timeout": 2.0
         }
     ],
     "app": {
@@ -30,5 +43,9 @@
         "log": {
             "log_level": "INFO"
         }
+    },
+    "custom_config": {
+        "allowed_origins": "${ALLOWED_ORIGIN}",
+        "events_cache_ttl_seconds": ${EVENTS_CACHE_TTL_SECONDS}
     }
 }

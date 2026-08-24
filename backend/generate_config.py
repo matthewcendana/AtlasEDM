@@ -3,9 +3,13 @@ Generates backend/config.json from config.json.template, filling in DB connectio
 details read from the repo root .env file.
 
 Drogon's config file loader has no built-in environment-variable substitution, so this
-script is the bridge: it keeps real credentials out of the template (which is committed
-to git) and out of any hardcoded C++ source, while still letting the backend run off the
-same .env file the Python sync script already uses.
+script is the bridge for running the backend directly on the host: it keeps real
+credentials out of the template (which is committed to git) and out of any hardcoded
+C++ source, while still letting the backend run off the same .env file the Python sync
+script already uses. The containerized backend (see backend/docker-entrypoint.sh) fills
+the same ${VAR}-style template with `envsubst` instead, since Docker Compose already
+injects .env as real environment variables inside the container — this script isn't
+part of that path and isn't shipped in the runtime image.
 
 Usage:
     python3 backend/generate_config.py
@@ -21,11 +25,16 @@ REPO_ROOT = BACKEND_DIR.parent
 load_dotenv(REPO_ROOT / ".env")
 
 REPLACEMENTS = {
-    "__POSTGRES_HOST__": os.environ.get("POSTGRES_HOST", "localhost"),
-    "__POSTGRES_PORT__": os.environ.get("POSTGRES_PORT", "5432"),
-    "__POSTGRES_DB__": os.environ["POSTGRES_DB"],
-    "__POSTGRES_USER__": os.environ["POSTGRES_USER"],
-    "__POSTGRES_PASSWORD__": os.environ["POSTGRES_PASSWORD"],
+    "${POSTGRES_HOST}": os.environ.get("POSTGRES_HOST", "localhost"),
+    "${POSTGRES_PORT}": os.environ.get("POSTGRES_PORT", "5432"),
+    "${POSTGRES_DB}": os.environ["POSTGRES_DB"],
+    "${POSTGRES_USER}": os.environ["POSTGRES_USER"],
+    "${POSTGRES_PASSWORD}": os.environ["POSTGRES_PASSWORD"],
+    "${REDIS_HOST}": os.environ.get("REDIS_HOST", "localhost"),
+    "${REDIS_PORT}": os.environ.get("REDIS_PORT", "6379"),
+    "${BACKEND_PORT}": os.environ.get("BACKEND_PORT", "8080"),
+    "${ALLOWED_ORIGIN}": os.environ["ALLOWED_ORIGIN"],
+    "${EVENTS_CACHE_TTL_SECONDS}": os.environ.get("EVENTS_CACHE_TTL_SECONDS", "1200"),
 }
 
 
