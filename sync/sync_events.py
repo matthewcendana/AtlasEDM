@@ -7,6 +7,16 @@ Usage:
 On each run, fetches events created since the last successful sync (using Edmtrain's
 createdStartDate filter, which only returns events added since that date and are still
 upcoming). On the first run, fetches all upcoming events with no date filter.
+
+Known tradeoff: the backend's GET /events caches responses in Redis for ~20 minutes
+(see kEventsCacheTtlSeconds in backend/controllers/EventController.cc). This script
+doesn't invalidate that cache after writing new data, so a request can serve results up
+to ~20 minutes stale relative to what this sync just wrote. This is intentional for now:
+the TTL is short relative to the once-daily sync cadence, so it self-resolves quickly
+without needing a real invalidation pipeline (e.g. this script publishing a Redis
+message, or flushing/versioning cache keys on sync completion). Worth revisiting only if
+the sync schedule becomes much more frequent, or if 20 minutes of staleness right after
+a sync turns out to actually matter for how the product gets used.
 """
 import logging
 import os

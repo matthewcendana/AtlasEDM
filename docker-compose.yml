@@ -15,5 +15,46 @@ services:
       timeout: 5s
       retries: 5
 
+  redis:
+    image: redis:7-alpine
+    container_name: atlasedm-redis
+    restart: unless-stopped
+    ports:
+      - "6379:6379"
+    volumes:
+      - redisdata:/data
+    healthcheck:
+      test: ["CMD-SHELL", "redis-cli ping | grep -q PONG"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  backend:
+    build: ./backend
+    container_name: atlasedm-backend
+    restart: unless-stopped
+    env_file: .env
+    # .env's POSTGRES_HOST/PORT and REDIS_HOST/PORT are written for *host* access
+    # (localhost, plus Postgres's host-remapped 5433 — see the postgres service's
+    # port mapping above). Inside the Compose network, sibling containers are reached
+    # by service name, and always on the container's own internal port, never a
+    # host-side remap — Postgres's own internal port is still 5432 regardless of what
+    # host port 5433 forwards to. These four overrides are the one place that
+    # distinction actually matters; everything else (credentials, ALLOWED_ORIGIN,
+    # EVENTS_CACHE_TTL_SECONDS, BACKEND_PORT) still comes from the shared .env as-is.
+    environment:
+      POSTGRES_HOST: postgres
+      POSTGRES_PORT: 5432
+      REDIS_HOST: redis
+      REDIS_PORT: 6379
+    ports:
+      - "${BACKEND_PORT:-8080}:${BACKEND_PORT:-8080}"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+
 volumes:
   pgdata:
+  redisdata:

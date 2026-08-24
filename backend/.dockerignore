@@ -1,0 +1,8 @@
+# The container generates its own config.json at startup (see docker-entrypoint.sh);
+# never bake the host-generated one — with real credentials — into an image layer.
+config.json
+
+build/
+uploads/
+server.log
+.git
