@@ -1,0 +1,19 @@
+@import "tailwindcss";
+
+:root {
+  --color-panel-light: #f3f2f8;
+  --color-panel-dark: #19191b;
+  --color-accent: #e8368f;
+}
+
+@theme inline {
+  --font-sans: var(--font-geist-sans);
+  --color-panel-light: var(--color-panel-light);
+  --color-panel-dark: var(--color-panel-dark);
+  --color-accent: var(--color-accent);
+}
+
+body {
+  background: var(--color-panel-light);
+  font-family: var(--font-sans), Arial, Helvetica, sans-serif;
+}
