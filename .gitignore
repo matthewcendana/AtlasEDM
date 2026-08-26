@@ -150,6 +150,11 @@ activemq-data/
 # Environments
 .env
 .envrc
+# Broader than the exact ".env" above on purpose: catches .env.local, .env.production,
+# etc. anywhere in the repo (not just frontend/, in case backend/ or sync/ ever grows
+# its own) — safer default for a file category that's specifically for secrets, and
+# there's no tracked .env.example/.env.template here that this could wrongly hide.
+.env.*
 .venv
 env/
 venv/
@@ -220,3 +225,42 @@ __marimo__/
 
 # Streamlit
 .streamlit/secrets.toml
+
+# AI tooling config (Claude Code / agent skills) — dev-machine tooling, not app code
+.claude/
+.agents/
+
+# OS / editor cruft — repo-wide, not scoped to any one subproject since Finder can
+# drop a .DS_Store into any directory it's opened, and a local dev TLS cert could
+# plausibly live next to any of the services, not just the frontend.
+.DS_Store
+*.pem
+
+# Frontend (Next.js, frontend/) — merged in from frontend/.gitignore, which used to
+# duplicate this file. Scoped under frontend/ rather than left bare: these are all
+# npm/Next-specific artifacts that only ever exist there (backend/ is CMake+C++,
+# sync/ is a plain Python script), so anchoring them avoids accidentally shadowing a
+# similarly-named path if one ever shows up elsewhere in the repo.
+frontend/node_modules/
+frontend/.pnp
+frontend/.pnp.*
+frontend/.yarn/*
+!frontend/.yarn/patches
+!frontend/.yarn/plugins
+!frontend/.yarn/releases
+!frontend/.yarn/versions
+frontend/coverage/
+frontend/.next/
+frontend/out/
+# Not re-anchoring a plain "/build" here (frontend/.gitignore's leftover CRA-style
+# entry) — the repo's own generic `build/` rule near the top of this file already
+# matches frontend/build/ unscoped.
+frontend/npm-debug.log*
+frontend/yarn-debug.log*
+frontend/yarn-error.log*
+frontend/.pnpm-debug.log*
+frontend/.vercel
+frontend/*.tsbuildinfo
+frontend/next-env.d.ts
+# frontend/.gitignore also had a bare ".env*" and explicit ".env.local" here — both
+# already fully covered by the repo-wide ".env.*" rule added above.
