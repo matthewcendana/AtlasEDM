@@ -1,6 +1,6 @@
-import Image from "next/image";
-import { LocationSearch } from "./_components/LocationSearch";
+import { SearchBar } from "./_components/SearchBar";
 import { PoweredByEdmtrain } from "./_components/PoweredByEdmtrain";
+import { LandingMapLoader } from "./_components/LandingMapLoader";
 
 export default function Home() {
   return (
@@ -15,20 +15,13 @@ export default function Home() {
               An interactive map of upcoming EDM events and festivals
             </p>
           </div>
-          <LocationSearch />
+          <SearchBar />
         </div>
         <PoweredByEdmtrain />
       </section>
 
       <section className="relative h-64 w-full overflow-hidden bg-panel-dark sm:h-80 md:h-auto md:w-1/2">
-        <Image
-          src="/images/world-map.svg"
-          alt="World map"
-          fill
-          unoptimized
-          className="object-cover opacity-90"
-          style={{ objectPosition: "15% 38%" }}
-        />
+        <LandingMapLoader />
       </section>
     </main>
   );
