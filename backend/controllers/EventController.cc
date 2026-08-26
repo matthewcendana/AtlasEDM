@@ -76,36 +76,54 @@ bool parseNonNegativeInt(const std::string& text, long& out)
 
 // age_category is always exactly "21+", "18+", or "Other" (see migrations/003), so we
 // can filter with a plain IN(...) rather than parsing anything at query time. This
-// always binds exactly 3 slots regardless of which bucket was requested, padding unused
-// slots with "" (a value age_category can never hold) — Drogon's execSqlAsync resolves
-// its parameter list at compile time via templates, so the *number* of bound
-// parameters has to be fixed in the C++ source; it can't vary per request. Buckets are
-// treated as an ordered threshold (Other < 18+ < 21+), so minAge is inclusive upward:
-// minAge=18 matches 18+ and 21+ (21 satisfies "at least 18"), minAge=21 matches only
-// 21+ (nothing stricter exists), and minAge=other matches all three (Other is the
-// bottom of the scale, so "at least Other" is every event).
-bool resolveAgeCategoryFilter(const std::string& minAge, std::array<std::string, 3>& slots)
+// always binds exactly 3 slots regardless of how many buckets were requested, padding
+// unused slots with "" (a value age_category can never hold) — Drogon's execSqlAsync
+// resolves its parameter list at compile time via templates, so the *number* of bound
+// parameters has to be fixed in the C++ source; it can't vary per request.
+//
+// ageCategories is a direct multi-select — a comma-separated subset of "18", "21",
+// "other" (mapping to the DB's exact "18+"/"21+"/"Other" values) — rather than the
+// ordered "at least this restrictive" threshold this used to be (minAge=18 used to
+// mean "18+ or stricter"). A checkbox-per-bucket UI needs to be able to ask for e.g.
+// just "18+ and Other" while excluding "21+", which no single threshold value could
+// express. Absent/empty means no filter — every category matches — so a
+// fully-checked checkbox group and an unfiltered request are indistinguishable, both
+// server-side and in the cache key. The parsed set is deduplicated and sorted before
+// filling the slots so two requests naming the same buckets in a different order (or
+// with accidental repeats) resolve to the same slots — and therefore the same cache
+// key, mirroring how artistIds is deduplicated/sorted below for the same reason.
+bool resolveAgeCategoryFilter(const std::string& raw, std::array<std::string, 3>& slots)
 {
-    if (minAge.empty())
+    slots = {"", "", ""};
+    if (raw.empty())
     {
-        slots = {"21+", "18+", "Other"};
+        slots = {"18+", "21+", "Other"};
+        return true;
     }
-    else if (minAge == "21")
+
+    std::vector<std::string> categories;
+    std::stringstream stream(raw);
+    std::string token;
+    while (std::getline(stream, token, ','))
     {
-        slots = {"21+", "", ""};
+        std::string category;
+        if (token == "18") category = "18+";
+        else if (token == "21") category = "21+";
+        else if (token == "other") category = "Other";
+        else return false;
+
+        if (std::find(categories.begin(), categories.end(), category) == categories.end())
+        {
+            categories.push_back(category);
+        }
     }
-    else if (minAge == "18")
-    {
-        slots = {"21+", "18+", ""};
-    }
-    else if (minAge == "other")
-    {
-        slots = {"21+", "18+", "Other"};
-    }
-    else
+    if (categories.empty() || categories.size() > slots.size())
     {
         return false;
     }
+
+    std::sort(categories.begin(), categories.end());
+    std::copy(categories.begin(), categories.end(), slots.begin());
     return true;
 }
 
@@ -193,16 +211,23 @@ std::string buildEventsCacheKey(double minLat,
                                 const std::string& startDate,
                                 const std::string& endDate,
                                 long eventsPerVenue,
-                                const std::string& minAge,
-                                std::vector<long> artistIds)
+                                const std::array<std::string, 3>& ageCategoryFilter,
+                                std::vector<long> artistIds,
+                                bool festivalsOnly)
 {
     std::sort(artistIds.begin(), artistIds.end());
     artistIds.erase(std::unique(artistIds.begin(), artistIds.end()), artistIds.end());
 
     std::ostringstream key;
     key << "events:v1:" << std::fixed << std::setprecision(kBboxCacheKeyPrecision) << minLat << ':' << minLng
-        << ':' << maxLat << ':' << maxLng << ':' << startDate << ':' << endDate << ':' << eventsPerVenue << ':'
-        << minAge << ':';
+        << ':' << maxLat << ':' << maxLng << ':' << startDate << ':' << endDate << ':' << eventsPerVenue << ':';
+    // Already deduplicated and sorted by resolveAgeCategoryFilter, so this just joins
+    // whichever of the 3 fixed slots are populated — no further normalization needed.
+    for (const auto& category : ageCategoryFilter)
+    {
+        if (!category.empty()) key << category << ',';
+    }
+    key << ':';
     for (size_t i = 0; i < artistIds.size(); ++i)
     {
         if (i > 0)
@@ -211,6 +236,7 @@ std::string buildEventsCacheKey(double minLat,
         }
         key << artistIds[i];
     }
+    key << ':' << (festivalsOnly ? "festivalsOnly" : "all");
     return key.str();
 }
 
@@ -267,6 +293,7 @@ struct EventAgg
     Json::Value startTime;
     Json::Value link;
     Json::Value ages;
+    bool isFlagship = false;
     std::vector<ArtistAgg> artists;
 };
 
@@ -326,6 +353,7 @@ HttpResponsePtr buildEventsResponse(const Result& result, long eventsPerVenue)
                 event.startTime = fieldToJson(row["event_start_time"]);
                 event.link = fieldToJson(row["event_link"]);
                 event.ages = fieldToJson(row["event_ages"]);
+                event.isFlagship = row["event_is_flagship"].as<bool>();
                 venue.events.push_back(std::move(event));
             }
             currentEventId = eventId;
@@ -369,6 +397,7 @@ HttpResponsePtr buildEventsResponse(const Result& result, long eventsPerVenue)
             eventJson["startTime"] = std::move(event.startTime);
             eventJson["link"] = std::move(event.link);
             eventJson["ages"] = std::move(event.ages);
+            eventJson["isFlagship"] = event.isFlagship;
             eventJson["artists"] = std::move(artistsJson);
             eventsJson.append(std::move(eventJson));
         }
@@ -456,12 +485,13 @@ void EventController::asyncHandleHttpRequest(const HttpRequestPtr& req, std::fun
         }
     }
 
-    // --- minAge: optional, one of "18", "21", "other" ---
-    const std::string minAge = req->getParameter("minAge");
+    // --- ageCategories: optional, comma-separated subset of "18", "21", "other" ---
+    const std::string ageCategoriesRaw = req->getParameter("ageCategories");
     std::array<std::string, 3> ageCategoryFilter;
-    if (!resolveAgeCategoryFilter(minAge, ageCategoryFilter))
+    if (!resolveAgeCategoryFilter(ageCategoriesRaw, ageCategoryFilter))
     {
-        callback(makeErrorResponse(k400BadRequest, R"(minAge must be one of "18", "21", or "other")"));
+        callback(makeErrorResponse(
+            k400BadRequest, R"(ageCategories must be a comma-separated list of "18", "21", and/or "other")"));
         return;
     }
 
@@ -487,6 +517,13 @@ void EventController::asyncHandleHttpRequest(const HttpRequestPtr& req, std::fun
         artistIdSlots[i] = std::to_string(artistIds[i]);
     }
 
+    // --- festivalsOnly: optional, restricts to events.is_flagship = true ---
+    // Powers the map's low-zoom "monuments" view (only flagship-festival pins, no
+    // regular venues) — same "$N = '' means no-op" trick as artistFilterActive above,
+    // for the same reason: one static SQL string, fixed parameter count.
+    const bool festivalsOnly = req->getParameter("festivalsOnly") == "true";
+    const std::string festivalsOnlyFlag = festivalsOnly ? "x" : "";
+
     // venues.geom is GEOGRAPHY(POINT). The `&&` operator compares bounding
     // boxes and uses the GiST index on geom directly. ST_Within would need
     // an exact polygon-containment check via ST_MakeEnvelope + a cast to
@@ -507,6 +544,7 @@ void EventController::asyncHandleHttpRequest(const HttpRequestPtr& req, std::fun
             e.start_time AS event_start_time,
             e.link AS event_link,
             e.ages AS event_ages,
+            e.is_flagship AS event_is_flagship,
             a.name AS artist_name,
             ea.b2b_ind AS artist_b2b_ind
         FROM venues v
@@ -524,6 +562,7 @@ void EventController::asyncHandleHttpRequest(const HttpRequestPtr& req, std::fun
                     AND eaf.artist_id IN ($11::integer, $12::integer, $13::integer, $14::integer, $15::integer)
               )
           )
+          AND ($16 = '' OR e.is_flagship = true)
         ORDER BY v.id, e.event_date, e.start_time NULLS LAST, e.id, ea.position NULLS LAST
     )";
     // The artist filter uses its own event_artists join (aliased eaf) rather than
@@ -554,7 +593,8 @@ void EventController::asyncHandleHttpRequest(const HttpRequestPtr& req, std::fun
     // this flag — goes in as a string).
 
     const std::string cacheKey = buildEventsCacheKey(
-        minLat, minLng, maxLat, maxLng, startDate, endDate, eventsPerVenue, minAge, artistIds);
+        minLat, minLng, maxLat, maxLng, startDate, endDate, eventsPerVenue, ageCategoryFilter, artistIds,
+        festivalsOnly);
 
     auto dbClient = drogon::app().getDbClient();
     auto redisClient = drogon::app().getRedisClient();
@@ -565,7 +605,8 @@ void EventController::asyncHandleHttpRequest(const HttpRequestPtr& req, std::fun
     // (Redis itself errored) — in both cases the right move is the same: fall back to
     // Postgres rather than fail the request over a cache problem.
     auto runDbQuery = [dbClient, redisClient, cacheKey, eventsPerVenue, callback, minLng, minLat, maxLng, maxLat,
-                       startDate, endDate, ageCategoryFilter, artistFilterActive, artistIdSlots]() {
+                       startDate, endDate, ageCategoryFilter, artistFilterActive, artistIdSlots,
+                       festivalsOnlyFlag]() {
         // `sql` is a static local (declared above), so it doesn't need to be captured.
         dbClient->execSqlAsync(
             sql,
@@ -605,7 +646,7 @@ void EventController::asyncHandleHttpRequest(const HttpRequestPtr& req, std::fun
             minLng, minLat, maxLng, maxLat, startDate, endDate,
             ageCategoryFilter[0], ageCategoryFilter[1], ageCategoryFilter[2],
             artistFilterActive, artistIdSlots[0], artistIdSlots[1], artistIdSlots[2],
-            artistIdSlots[3], artistIdSlots[4]);
+            artistIdSlots[3], artistIdSlots[4], festivalsOnlyFlag);
     };
 
     redisClient->execCommandAsync(

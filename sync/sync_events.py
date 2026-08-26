@@ -139,17 +139,39 @@ def categorize_age(ages):
     return "Other"
 
 
-def upsert_event(cur, event, venue_id):
+def load_flagship_patterns(conn):
+    """Loads flagship_festivals.name_pattern once per sync run rather than re-querying
+    per event — the list is small and static within a run, so this trades one query for
+    what would otherwise be one EXISTS subquery per upserted event.
+    """
+    with conn.cursor() as cur:
+        cur.execute("SELECT name_pattern FROM flagship_festivals")
+        return [row[0] for row in cur.fetchall()]
+
+
+def is_flagship_event(name, flagship_patterns):
+    """Same case-insensitive substring match as the SQL backfill in
+    migrations/004_flagship_festivals.sql (`name ILIKE '%' || name_pattern || '%'`) —
+    kept equivalent so a newly-synced event and a backfilled one get the same answer.
+    """
+    if not name:
+        return False
+    lowered = name.lower()
+    return any(pattern.lower() in lowered for pattern in flagship_patterns)
+
+
+def upsert_event(cur, event, venue_id, flagship_patterns):
     cur.execute(
         """
         INSERT INTO events (
-            edmtrain_id, name, link, ages, age_category, festival_ind, livestream_ind,
-            electronic_genre_ind, other_genre_ind, event_date, start_time, end_time,
-            created_date, venue_id
+            edmtrain_id, name, link, ages, age_category, is_flagship, festival_ind,
+            livestream_ind, electronic_genre_ind, other_genre_ind, event_date,
+            start_time, end_time, created_date, venue_id
         )
         VALUES (
-            %(edmtrain_id)s, %(name)s, %(link)s, %(ages)s, %(age_category)s, %(festival_ind)s,
-            %(livestream_ind)s, %(electronic_genre_ind)s, %(other_genre_ind)s, %(event_date)s,
+            %(edmtrain_id)s, %(name)s, %(link)s, %(ages)s, %(age_category)s,
+            %(is_flagship)s, %(festival_ind)s, %(livestream_ind)s,
+            %(electronic_genre_ind)s, %(other_genre_ind)s, %(event_date)s,
             %(start_time)s, %(end_time)s, %(created_date)s, %(venue_id)s
         )
         ON CONFLICT (edmtrain_id) DO UPDATE SET
@@ -157,6 +179,7 @@ def upsert_event(cur, event, venue_id):
             link = EXCLUDED.link,
             ages = EXCLUDED.ages,
             age_category = EXCLUDED.age_category,
+            is_flagship = EXCLUDED.is_flagship,
             festival_ind = EXCLUDED.festival_ind,
             livestream_ind = EXCLUDED.livestream_ind,
             electronic_genre_ind = EXCLUDED.electronic_genre_ind,
@@ -174,6 +197,7 @@ def upsert_event(cur, event, venue_id):
             "link": event.get("link"),
             "ages": event.get("ages"),
             "age_category": categorize_age(event.get("ages")),
+            "is_flagship": is_flagship_event(event.get("name"), flagship_patterns),
             "festival_ind": event.get("festivalInd", False),
             "livestream_ind": event.get("livestreamInd", False),
             "electronic_genre_ind": event.get("electronicGenreInd", False),
@@ -223,11 +247,11 @@ def sync_event_artists(cur, event_id, artist_list):
         )
 
 
-def process_event(conn, event):
+def process_event(conn, event, flagship_patterns):
     """Upserts a single event (and its venue/artists) in its own transaction."""
     with conn.cursor() as cur:
         venue_id = upsert_venue(cur, event.get("venue"))
-        event_id = upsert_event(cur, event, venue_id)
+        event_id = upsert_event(cur, event, venue_id, flagship_patterns)
         sync_event_artists(cur, event_id, event.get("artistList") or [])
     conn.commit()
 
@@ -261,13 +285,15 @@ def main():
         else:
             log.info("No prior successful sync found — fetching all upcoming events")
 
+        flagship_patterns = load_flagship_patterns(conn)
+
         events = fetch_events(api_key, created_start_date=last_sync_date)
         events_fetched = len(events)
         log.info("Fetched %d event(s) from Edmtrain", events_fetched)
 
         for event in events:
             try:
-                process_event(conn, event)
+                process_event(conn, event, flagship_patterns)
                 events_upserted += 1
             except Exception:
                 conn.rollback()
