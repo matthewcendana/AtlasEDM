@@ -127,6 +127,41 @@ bool resolveAgeCategoryFilter(const std::string& raw, std::array<std::string, 3>
     return true;
 }
 
+// eventTypes: optional, comma-separated subset of "festival", "single" — maps
+// directly onto events.festival_ind (true/false). Mirrors resolveAgeCategoryFilter's
+// multi-select shape but collapses to a single output value since there are only
+// two buckets and the query only ever needs "no filter" or "exactly one side":
+// absent, empty, or both selected all mean "no filter" (out = ""), matching the
+// checkbox UI's own "both checked = fully inclusive default" and "neither checked =
+// same as both, don't return zero results" behavior — there's no server-side
+// difference between those two states worth encoding separately.
+bool resolveEventTypeFilter(const std::string& raw, std::string& out)
+{
+    out = "";
+    if (raw.empty())
+    {
+        return true;
+    }
+
+    std::vector<std::string> types;
+    std::stringstream stream(raw);
+    std::string token;
+    while (std::getline(stream, token, ','))
+    {
+        if (token != "festival" && token != "single") return false;
+        if (std::find(types.begin(), types.end(), token) == types.end())
+        {
+            types.push_back(token);
+        }
+    }
+    if (types.empty() || types.size() >= 2)
+    {
+        return true;  // neither or both selected => unfiltered, out stays ""
+    }
+    out = types[0];
+    return true;
+}
+
 constexpr size_t kMaxArtistIds = 5;
 
 // Parses "artistIds=4401,225,111" into up to kMaxArtistIds non-negative integers.
@@ -210,17 +245,33 @@ std::string buildEventsCacheKey(double minLat,
                                 double maxLng,
                                 const std::string& startDate,
                                 const std::string& endDate,
+                                const std::string& festivalEndDate,
                                 long eventsPerVenue,
                                 const std::array<std::string, 3>& ageCategoryFilter,
                                 std::vector<long> artistIds,
-                                bool festivalsOnly)
+                                bool festivalsOnly,
+                                const std::string& eventTypeFilter)
 {
     std::sort(artistIds.begin(), artistIds.end());
     artistIds.erase(std::unique(artistIds.begin(), artistIds.end()), artistIds.end());
 
+    // "v2": startDate/endDate alone no longer fully determine the query result —
+    // two requests can share identical startDate/endDate after defaulting (one from
+    // an explicit ?endDate=... that happens to match the computed default, one from
+    // omitting it entirely) while getting different festival-row widening. Folding
+    // festivalEndDate into the key (and bumping v1->v2, per this function's own
+    // "cheap invalidation escape hatch" comment above) keeps those cases from
+    // colliding on a stale/wrong cached response.
+    // "v3": each event's JSON gained a `festivalInd` field (frontend needs it to tell
+    // a festival event apart from a regular show for card rendering) — bumping again
+    // so pre-existing v2 cache entries, which lack the field, aren't served as-is.
+    // "v4": added the eventTypeFilter ("", "festival", or "single") segment below —
+    // bumping once more so a pre-existing v3 entry for an unfiltered request doesn't
+    // get served back for a request that's now asking for just one event type.
     std::ostringstream key;
-    key << "events:v1:" << std::fixed << std::setprecision(kBboxCacheKeyPrecision) << minLat << ':' << minLng
-        << ':' << maxLat << ':' << maxLng << ':' << startDate << ':' << endDate << ':' << eventsPerVenue << ':';
+    key << "events:v4:" << std::fixed << std::setprecision(kBboxCacheKeyPrecision) << minLat << ':' << minLng
+        << ':' << maxLat << ':' << maxLng << ':' << startDate << ':' << endDate << ':' << festivalEndDate << ':'
+        << eventsPerVenue << ':';
     // Already deduplicated and sorted by resolveAgeCategoryFilter, so this just joins
     // whichever of the 3 fixed slots are populated — no further normalization needed.
     for (const auto& category : ageCategoryFilter)
@@ -237,6 +288,7 @@ std::string buildEventsCacheKey(double minLat,
         key << artistIds[i];
     }
     key << ':' << (festivalsOnly ? "festivalsOnly" : "all");
+    key << ':' << (eventTypeFilter.empty() ? "allTypes" : eventTypeFilter);
     return key.str();
 }
 
@@ -248,6 +300,19 @@ std::string formatDate(std::time_t time)
     std::strftime(buf, sizeof(buf), "%Y-%m-%d", &tmValue);
     return std::string(buf);
 }
+
+// Multi-day festivals (events.festival_ind, synced straight from Edmtrain's own
+// festivalInd flag) are frequently announced with their later days further out than
+// the 90-day default window below — e.g. a 3-day festival whose day 1 falls just
+// inside the window but whose days 2-3 fall just past it, which used to make those
+// later days silently vanish from a venue's event list with no indication they
+// existed. Only applied when the caller didn't ask for a specific end date (see
+// endDateWasDefaulted in asyncHandleHttpRequest) — an explicit ?endDate=... from the
+// caller is respected exactly as given, for festival rows same as any other, since
+// widening past a date the caller deliberately chose would be a surprise, not a fix.
+// Mirrors the frontend's own festivalsOnly widening (fetchFlagshipEvents in
+// events.ts), just applied here for the *default-range* case instead.
+const std::string kFestivalDateCeiling = "2030-01-01";
 
 // Default window: today through 90 days out. Computed in UTC so it doesn't
 // drift with the server's local timezone.
@@ -294,6 +359,7 @@ struct EventAgg
     Json::Value link;
     Json::Value ages;
     bool isFlagship = false;
+    bool festivalInd = false;
     std::vector<ArtistAgg> artists;
 };
 
@@ -354,6 +420,7 @@ HttpResponsePtr buildEventsResponse(const Result& result, long eventsPerVenue)
                 event.link = fieldToJson(row["event_link"]);
                 event.ages = fieldToJson(row["event_ages"]);
                 event.isFlagship = row["event_is_flagship"].as<bool>();
+                event.festivalInd = row["event_festival_ind"].as<bool>();
                 venue.events.push_back(std::move(event));
             }
             currentEventId = eventId;
@@ -398,6 +465,7 @@ HttpResponsePtr buildEventsResponse(const Result& result, long eventsPerVenue)
             eventJson["link"] = std::move(event.link);
             eventJson["ages"] = std::move(event.ages);
             eventJson["isFlagship"] = event.isFlagship;
+            eventJson["festivalInd"] = event.festivalInd;
             eventJson["artists"] = std::move(artistsJson);
             eventsJson.append(std::move(eventJson));
         }
@@ -451,6 +519,11 @@ void EventController::asyncHandleHttpRequest(const HttpRequestPtr& req, std::fun
     // --- Date range: optional, defaults to today through 90 days out ---
     std::string startDate = req->getParameter("startDate");
     std::string endDate = req->getParameter("endDate");
+    // Captured before defaulting fills endDate in below — this is what distinguishes
+    // "caller explicitly asked for this end date" from "caller asked for no end date
+    // in particular, so this is just where we happened to draw the line" for the
+    // festival-widening logic further down (see kFestivalDateCeiling).
+    const bool endDateWasDefaulted = endDate.empty();
 
     if (startDate.empty() || endDate.empty())
     {
@@ -473,6 +546,11 @@ void EventController::asyncHandleHttpRequest(const HttpRequestPtr& req, std::fun
         callback(makeErrorResponse(k400BadRequest, "startDate must not be after endDate"));
         return;
     }
+
+    // The upper bound actually used for festival_ind=true rows: the caller's own
+    // endDate when they set one explicitly, otherwise a far-future ceiling instead
+    // of the (unrelated-to-festivals) 90-day default — see kFestivalDateCeiling.
+    const std::string festivalEndDate = endDateWasDefaulted ? kFestivalDateCeiling : endDate;
 
     // --- eventsPerVenue: optional, defaults to 10 ---
     long eventsPerVenue = 10;
@@ -524,6 +602,17 @@ void EventController::asyncHandleHttpRequest(const HttpRequestPtr& req, std::fun
     const bool festivalsOnly = req->getParameter("festivalsOnly") == "true";
     const std::string festivalsOnlyFlag = festivalsOnly ? "x" : "";
 
+    // --- eventTypes: optional, comma-separated subset of "festival", "single" ---
+    // Powers the on-map filter bar's Festival/Single Artist checkboxes, filtering on
+    // events.festival_ind directly.
+    std::string eventTypeFilter;
+    if (!resolveEventTypeFilter(req->getParameter("eventTypes"), eventTypeFilter))
+    {
+        callback(makeErrorResponse(
+            k400BadRequest, R"(eventTypes must be a comma-separated list of "festival" and/or "single")"));
+        return;
+    }
+
     // venues.geom is GEOGRAPHY(POINT). The `&&` operator compares bounding
     // boxes and uses the GiST index on geom directly. ST_Within would need
     // an exact polygon-containment check via ST_MakeEnvelope + a cast to
@@ -545,6 +634,7 @@ void EventController::asyncHandleHttpRequest(const HttpRequestPtr& req, std::fun
             e.link AS event_link,
             e.ages AS event_ages,
             e.is_flagship AS event_is_flagship,
+            e.festival_ind AS event_festival_ind,
             a.name AS artist_name,
             ea.b2b_ind AS artist_b2b_ind
         FROM venues v
@@ -552,7 +642,10 @@ void EventController::asyncHandleHttpRequest(const HttpRequestPtr& req, std::fun
         LEFT JOIN event_artists ea ON ea.event_id = e.id
         LEFT JOIN artists a ON a.id = ea.artist_id
         WHERE v.geom && ST_MakeEnvelope($1, $2, $3, $4, 4326)::geography
-          AND e.event_date BETWEEN $5::date AND $6::date
+          AND (
+              e.event_date BETWEEN $5::date AND $6::date
+              OR (e.festival_ind IS TRUE AND e.event_date BETWEEN $5::date AND $17::date)
+          )
           AND e.age_category IN ($7, $8, $9)
           AND (
               $10 = ''
@@ -563,6 +656,7 @@ void EventController::asyncHandleHttpRequest(const HttpRequestPtr& req, std::fun
               )
           )
           AND ($16 = '' OR e.is_flagship = true)
+          AND ($18 = '' OR e.festival_ind = ($18 = 'festival'))
         ORDER BY v.id, e.event_date, e.start_time NULLS LAST, e.id, ea.position NULLS LAST
     )";
     // The artist filter uses its own event_artists join (aliased eaf) rather than
@@ -593,8 +687,8 @@ void EventController::asyncHandleHttpRequest(const HttpRequestPtr& req, std::fun
     // this flag — goes in as a string).
 
     const std::string cacheKey = buildEventsCacheKey(
-        minLat, minLng, maxLat, maxLng, startDate, endDate, eventsPerVenue, ageCategoryFilter, artistIds,
-        festivalsOnly);
+        minLat, minLng, maxLat, maxLng, startDate, endDate, festivalEndDate, eventsPerVenue, ageCategoryFilter,
+        artistIds, festivalsOnly, eventTypeFilter);
 
     auto dbClient = drogon::app().getDbClient();
     auto redisClient = drogon::app().getRedisClient();
@@ -605,8 +699,8 @@ void EventController::asyncHandleHttpRequest(const HttpRequestPtr& req, std::fun
     // (Redis itself errored) — in both cases the right move is the same: fall back to
     // Postgres rather than fail the request over a cache problem.
     auto runDbQuery = [dbClient, redisClient, cacheKey, eventsPerVenue, callback, minLng, minLat, maxLng, maxLat,
-                       startDate, endDate, ageCategoryFilter, artistFilterActive, artistIdSlots,
-                       festivalsOnlyFlag]() {
+                       startDate, endDate, festivalEndDate, ageCategoryFilter, artistFilterActive, artistIdSlots,
+                       festivalsOnlyFlag, eventTypeFilter]() {
         // `sql` is a static local (declared above), so it doesn't need to be captured.
         dbClient->execSqlAsync(
             sql,
@@ -646,7 +740,7 @@ void EventController::asyncHandleHttpRequest(const HttpRequestPtr& req, std::fun
             minLng, minLat, maxLng, maxLat, startDate, endDate,
             ageCategoryFilter[0], ageCategoryFilter[1], ageCategoryFilter[2],
             artistFilterActive, artistIdSlots[0], artistIdSlots[1], artistIdSlots[2],
-            artistIdSlots[3], artistIdSlots[4], festivalsOnlyFlag);
+            artistIdSlots[3], artistIdSlots[4], festivalsOnlyFlag, festivalEndDate, eventTypeFilter);
     };
 
     redisClient->execCommandAsync(

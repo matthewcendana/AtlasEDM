@@ -140,27 +140,41 @@ def categorize_age(ages):
 
 
 def load_flagship_patterns(conn):
-    """Loads flagship_festivals.name_pattern once per sync run rather than re-querying
-    per event — the list is small and static within a run, so this trades one query for
-    what would otherwise be one EXISTS subquery per upserted event.
+    """Loads flagship_festivals' matching columns once per sync run rather than
+    re-querying per event — the list is small and static within a run, so this trades
+    one query for what would otherwise be one EXISTS subquery per upserted event.
     """
     with conn.cursor() as cur:
-        cur.execute("SELECT name_pattern FROM flagship_festivals")
-        return [row[0] for row in cur.fetchall()]
+        cur.execute("SELECT name_pattern, venue_pattern FROM flagship_festivals")
+        return cur.fetchall()
 
 
-def is_flagship_event(name, flagship_patterns):
-    """Same case-insensitive substring match as the SQL backfill in
-    migrations/004_flagship_festivals.sql (`name ILIKE '%' || name_pattern || '%'`) —
-    kept equivalent so a newly-synced event and a backfilled one get the same answer.
+def is_flagship_event(name, venue_name, flagship_patterns):
+    """Same case-insensitive substring match as the SQL recompute in
+    migrations/005_flagship_venue_pattern.sql (`name ILIKE '%' || name_pattern || '%'
+    AND (venue_pattern IS NULL OR venue_name ILIKE '%' || venue_pattern || '%')`) — kept
+    equivalent so a newly-synced event and a backfilled one get the same answer.
+
+    A bare name_pattern can't tell a flagship festival apart from an unrelated event
+    that merely shares its name (e.g. an unofficial afterparty, or a same-named show at
+    a different venue) — venue_pattern is an optional second constraint, matched
+    against the event's own venue, for the handful of patterns where that's ambiguous.
+    Most rows leave venue_pattern NULL, meaning name alone is enough.
     """
     if not name:
         return False
-    lowered = name.lower()
-    return any(pattern.lower() in lowered for pattern in flagship_patterns)
+    lowered_name = name.lower()
+    lowered_venue = (venue_name or "").lower()
+    for name_pattern, venue_pattern in flagship_patterns:
+        if name_pattern.lower() not in lowered_name:
+            continue
+        if venue_pattern is not None and venue_pattern.lower() not in lowered_venue:
+            continue
+        return True
+    return False
 
 
-def upsert_event(cur, event, venue_id, flagship_patterns):
+def upsert_event(cur, event, venue_id, venue_name, flagship_patterns):
     cur.execute(
         """
         INSERT INTO events (
@@ -197,7 +211,7 @@ def upsert_event(cur, event, venue_id, flagship_patterns):
             "link": event.get("link"),
             "ages": event.get("ages"),
             "age_category": categorize_age(event.get("ages")),
-            "is_flagship": is_flagship_event(event.get("name"), flagship_patterns),
+            "is_flagship": is_flagship_event(event.get("name"), venue_name, flagship_patterns),
             "festival_ind": event.get("festivalInd", False),
             "livestream_ind": event.get("livestreamInd", False),
             "electronic_genre_ind": event.get("electronicGenreInd", False),
@@ -250,8 +264,10 @@ def sync_event_artists(cur, event_id, artist_list):
 def process_event(conn, event, flagship_patterns):
     """Upserts a single event (and its venue/artists) in its own transaction."""
     with conn.cursor() as cur:
-        venue_id = upsert_venue(cur, event.get("venue"))
-        event_id = upsert_event(cur, event, venue_id, flagship_patterns)
+        venue = event.get("venue")
+        venue_id = upsert_venue(cur, venue)
+        venue_name = (venue or {}).get("name")
+        event_id = upsert_event(cur, event, venue_id, venue_name, flagship_patterns)
         sync_event_artists(cur, event_id, event.get("artistList") or [])
     conn.commit()
 
