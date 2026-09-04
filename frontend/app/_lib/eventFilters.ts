@@ -1,5 +1,6 @@
 import type { LocationSuggestion } from "./mapbox";
 import type { ArtistSuggestion } from "./artists";
+import { ALL_AGE_CATEGORIES, ALL_EVENT_TYPES, type AgeCategory, type EventType } from "./events";
 
 // The shape a future GET /events call will be made with. Field names match the
 // backend's query params directly (see EventController.cc) so building the request
@@ -25,13 +26,26 @@ export function buildEventQueryFilters(
   };
 }
 
+// The on-map filter bar's non-artist fields — optional because the landing page's
+// search bar has no such filters yet to carry (only location + artists); an on-map
+// re-search (see MapLocationSearch) passes the user's current filter state here so
+// replacing the search location doesn't silently drop a date range, age selection,
+// or event-count cap they'd already set.
+export interface CarriedMapFilters {
+  startDate: string | null;
+  endDate: string | null;
+  ageCategories: AgeCategory[];
+  eventTypes: EventType[];
+}
+
 // Carries the search bar's resolved selection to /map as URL query params — plain
 // GET params so a direct link/refresh round-trips the same search, and so /map can
 // tell "arrived from a search" apart from "landed here directly" (see
 // parseMapSearchParams' null return).
 export function buildMapSearchParams(
   location: LocationSuggestion,
-  artists: ArtistSuggestion[]
+  artists: ArtistSuggestion[],
+  carried?: CarriedMapFilters
 ): URLSearchParams {
   const filters = buildEventQueryFilters(location, artists);
   const params = new URLSearchParams();
@@ -50,6 +64,16 @@ export function buildMapSearchParams(
     }
   }
   params.set("locationName", location.name);
+
+  if (carried?.startDate) params.set("startDate", carried.startDate);
+  if (carried?.endDate) params.set("endDate", carried.endDate);
+  if (carried && carried.ageCategories.length < ALL_AGE_CATEGORIES.length) {
+    params.set("ageCategories", carried.ageCategories.join(","));
+  }
+  if (carried && carried.eventTypes.length < ALL_EVENT_TYPES.length) {
+    params.set("eventTypes", carried.eventTypes.join(","));
+  }
+
   return params;
 }
 
@@ -57,6 +81,10 @@ export interface MapSearchParams {
   filters: EventQueryFilters;
   locationName: string;
   artists: ArtistSuggestion[];
+  startDate: string | null;
+  endDate: string | null;
+  ageCategories: AgeCategory[];
+  eventTypes: EventType[];
 }
 
 // Returns null when the bbox params are missing/malformed — the signal /map uses to
@@ -99,9 +127,32 @@ export function parseMapSearchParams(searchParams: URLSearchParams): MapSearchPa
     name: artistNames[i] ?? `Artist ${id}`,
   }));
 
+  const ageCategoriesRaw = searchParams.get("ageCategories");
+  const ageCategories = ageCategoriesRaw
+    ? ageCategoriesRaw
+        .split(",")
+        .filter((token): token is AgeCategory => (ALL_AGE_CATEGORIES as string[]).includes(token))
+    : ALL_AGE_CATEGORIES;
+
+  // Same "empty/garbage falls back to fully-inclusive" shape as ageCategories above.
+  // Unlike ageCategories, an *explicitly* empty eventTypes (both boxes unchecked) is
+  // reachable through the UI — but since that state is already defined to behave
+  // identically to both-checked (see mapFilters.ts), collapsing it back to
+  // ALL_EVENT_TYPES on a round-trip through the URL loses nothing.
+  const eventTypesRaw = searchParams.get("eventTypes");
+  const eventTypes = eventTypesRaw
+    ? eventTypesRaw
+        .split(",")
+        .filter((token): token is EventType => (ALL_EVENT_TYPES as string[]).includes(token))
+    : ALL_EVENT_TYPES;
+
   return {
     filters: { minLat, minLng, maxLat, maxLng, artistIds },
     locationName: searchParams.get("locationName") ?? "the selected area",
     artists,
+    startDate: searchParams.get("startDate"),
+    endDate: searchParams.get("endDate"),
+    ageCategories: ageCategories.length > 0 ? ageCategories : ALL_AGE_CATEGORIES,
+    eventTypes: eventTypes.length > 0 ? eventTypes : ALL_EVENT_TYPES,
   };
 }

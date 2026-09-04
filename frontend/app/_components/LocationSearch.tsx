@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { MagnifyingGlass, X } from "@phosphor-icons/react/dist/ssr";
 import { geocodeLocation, type LocationSuggestion } from "../_lib/mapbox";
+import { MIN_VENUE_QUERY_LENGTH, searchVenues, venueToLocationSuggestion } from "../_lib/venues";
 import { useDebouncedValue } from "../_lib/useDebouncedValue";
 
 interface LocationSearchProps {
@@ -18,21 +19,33 @@ export function LocationSearch({ selected, onSelect }: LocationSearchProps) {
   const debouncedQuery = useDebouncedValue(query, 300);
 
   useEffect(() => {
-    if (selected || debouncedQuery.trim().length < 2) {
+    if (selected || debouncedQuery.trim().length < MIN_VENUE_QUERY_LENGTH) {
       return;
     }
 
     const controller = new AbortController();
-    geocodeLocation(debouncedQuery, controller.signal)
-      .then((results) => {
-        setSuggestions(results);
+    // Locations and venues are two independent sources feeding one combined dropdown
+    // (see the suggestion list below) — allSettled rather than all so one source
+    // failing (e.g. Mapbox rate-limited) doesn't wipe out results that already came
+    // back from the other; an error only surfaces when *both* fail.
+    Promise.allSettled([
+      geocodeLocation(debouncedQuery, controller.signal),
+      searchVenues(debouncedQuery, controller.signal),
+    ]).then(([locationResult, venueResult]) => {
+      if (controller.signal.aborted) return;
+
+      const locations = locationResult.status === "fulfilled" ? locationResult.value : [];
+      const venues =
+        venueResult.status === "fulfilled" ? venueResult.value.map(venueToLocationSuggestion) : [];
+      setSuggestions([...locations, ...venues]);
+
+      if (locationResult.status === "rejected" && venueResult.status === "rejected") {
+        const err = locationResult.reason;
+        setError(err instanceof Error ? err.message : "Search failed");
+      } else {
         setError(null);
-      })
-      .catch((err: unknown) => {
-        if (err instanceof DOMException && err.name === "AbortError") return;
-        setError(err instanceof Error ? err.message : "Location search failed");
-        setSuggestions([]);
-      });
+      }
+    });
 
     return () => controller.abort();
   }, [debouncedQuery, selected]);
@@ -85,7 +98,7 @@ export function LocationSearch({ selected, onSelect }: LocationSearchProps) {
         )}
       </div>
 
-      {isOpen && !selected && debouncedQuery.trim().length >= 2 && (suggestions.length > 0 || error) && (
+      {isOpen && !selected && debouncedQuery.trim().length >= MIN_VENUE_QUERY_LENGTH && (suggestions.length > 0 || error) && (
         <ul className="absolute z-10 mt-2 w-full overflow-hidden rounded-2xl bg-white py-2 shadow-[0_1px_2px_rgba(0,0,0,0.04),0_8px_24px_rgba(0,0,0,0.08)]">
           {error && <li className="px-6 py-2 text-sm text-red-500">{error}</li>}
           {suggestions.map((suggestion) => (

@@ -3,25 +3,24 @@
 import { useState } from "react";
 import { ArrowCounterClockwise } from "@phosphor-icons/react/dist/ssr";
 import type { ArtistSuggestion } from "../../_lib/artists";
-import type { AgeCategory } from "../../_lib/events";
+import type { AgeCategory, EventType } from "../../_lib/events";
 import { EMPTY_MAP_FILTERS, hasActiveMapFilters, type MapFilterState } from "../../_lib/mapFilters";
 import { ArtistFilterControl } from "./ArtistFilterControl";
-import { EventCountControl } from "./EventCountControl";
+import { EventTypeFilterControl } from "./EventTypeFilterControl";
 import { DateRangeControl } from "./DateRangeControl";
 import { AgeFilterControl } from "./AgeFilterControl";
 
-type FilterId = "artists" | "eventsPerVenue" | "dateRange" | "age";
+type FilterId = "artists" | "eventType" | "dateRange" | "age";
 
 interface MapFilterBarProps {
   filters: MapFilterState;
   onChange: (filters: MapFilterState) => void;
-  maxEventsPerVenue: number;
 }
 
 // A horizontal row of filter chips, each opening a dropdown directly below itself —
 // the Google Maps filter-bar interaction model (not its visual style). Left to right:
-// Artists, Events/venue, Date range, Age.
-export function MapFilterBar({ filters, onChange, maxEventsPerVenue }: MapFilterBarProps) {
+// Artists, Event type, Date range, Age.
+export function MapFilterBar({ filters, onChange }: MapFilterBarProps) {
   const [openFilter, setOpenFilter] = useState<FilterId | null>(null);
   const isActive = hasActiveMapFilters(filters);
 
@@ -32,8 +31,8 @@ export function MapFilterBar({ filters, onChange, maxEventsPerVenue }: MapFilter
   function setArtists(artists: ArtistSuggestion[]) {
     onChange({ ...filters, artists });
   }
-  function setEventsPerVenue(eventsPerVenue: number | null) {
-    onChange({ ...filters, eventsPerVenue });
+  function setEventTypes(eventTypes: EventType[]) {
+    onChange({ ...filters, eventTypes });
   }
   function setDateRange(startDate: string | null, endDate: string | null) {
     onChange({ ...filters, startDate, endDate });
@@ -51,12 +50,11 @@ export function MapFilterBar({ filters, onChange, maxEventsPerVenue }: MapFilter
         onToggle={() => toggle("artists")}
         onClose={() => setOpenFilter(null)}
       />
-      <EventCountControl
-        eventsPerVenue={filters.eventsPerVenue}
-        max={maxEventsPerVenue}
-        onChange={setEventsPerVenue}
-        isOpen={openFilter === "eventsPerVenue"}
-        onToggle={() => toggle("eventsPerVenue")}
+      <EventTypeFilterControl
+        eventTypes={filters.eventTypes}
+        onChange={setEventTypes}
+        isOpen={openFilter === "eventType"}
+        onToggle={() => toggle("eventType")}
         onClose={() => setOpenFilter(null)}
       />
       <DateRangeControl

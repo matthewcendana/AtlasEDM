@@ -8,7 +8,6 @@ import { FilterPopoverButton } from "./FilterPopoverButton";
 const OPTIONS: { value: AgeCategory; label: string }[] = [
   { value: "18", label: "18+" },
   { value: "21", label: "21+" },
-  { value: "other", label: "Other" },
 ];
 
 interface AgeFilterControlProps {
@@ -19,9 +18,6 @@ interface AgeFilterControlProps {
   onClose: () => void;
 }
 
-// Checkboxes, not radios: filtering starts fully inclusive (every bucket checked,
-// see mapFilters.ts) and unchecking a box opts it *out*, rather than the old
-// single-select threshold where picking one bucket implicitly excluded the others.
 export function AgeFilterControl({
   ageCategories,
   onChange,

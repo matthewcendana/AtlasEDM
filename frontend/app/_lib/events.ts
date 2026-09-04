@@ -7,7 +7,20 @@ const BACKEND_URL = process.env.NEXT_PUBLIC_BACKEND_URL ?? "http://localhost:808
 // application/x-www-form-urlencoded convention most HTTP stacks assume, so the wire
 // format avoids the character entirely rather than relying on both ends' URL
 // encoders/decoders agreeing on percent-escaping it.
-export type AgeCategory = "18" | "21" | "other";
+export type AgeCategory = "18" | "21";
+
+// Both buckets = the fully-inclusive/opt-out default (see mapFilters.ts and
+// EventController.cc's resolveAgeCategoryFilter) — lives here, next to AgeCategory
+// itself, so both mapFilters.ts and eventFilters.ts can import it without a cycle.
+export const ALL_AGE_CATEGORIES: AgeCategory[] = ["18", "21"];
+
+// Wire tokens for the backend's `eventTypes` param (see EventController.cc's
+// resolveEventTypeFilter) — maps directly onto events.festival_ind (true/false).
+export type EventType = "festival" | "single";
+
+// Both buckets checked = the fully-inclusive/opt-out default, same convention as
+// ALL_AGE_CATEGORIES above.
+export const ALL_EVENT_TYPES: EventType[] = ["festival", "single"];
 
 // Optional filters layered on top of a bounding box. Field names match the
 // backend's query params directly (see EventController.cc) so building the
@@ -19,6 +32,7 @@ export interface EventQueryParams {
   startDate?: string;
   endDate?: string;
   ageCategories?: AgeCategory[];
+  eventTypes?: EventType[];
   festivalsOnly?: boolean;
 }
 
@@ -30,6 +44,7 @@ export interface VenueEvent {
   link: string;
   ages: string;
   isFlagship: boolean;
+  festivalInd: boolean;
   artists: { name: string; b2bInd: boolean }[];
 }
 
@@ -71,14 +86,17 @@ export async function fetchEvents(
   if (params.ageCategories && params.ageCategories.length > 0) {
     url.searchParams.set("ageCategories", params.ageCategories.join(","));
   }
+  if (params.eventTypes && params.eventTypes.length > 0) {
+    url.searchParams.set("eventTypes", params.eventTypes.join(","));
+  }
   if (params.startDate) url.searchParams.set("startDate", params.startDate);
   if (params.endDate) url.searchParams.set("endDate", params.endDate);
   if (params.festivalsOnly) {
     url.searchParams.set("festivalsOnly", "true");
     // festival dates are often booked out much further than the backend's default
     // 90-day window (e.g. a next year's Ultra Miami/Tomorrowland edition already on
-    // the calendar) — widen it so those still show up as monuments today, unless an
-    // active date-range filter already narrowed the window on purpose.
+    // the calendar) — widen it so those still show up on the homepage globe today,
+    // unless an active date-range filter already narrowed the window on purpose.
     if (!params.startDate) url.searchParams.set("startDate", "2020-01-01");
     if (!params.endDate) url.searchParams.set("endDate", "2030-01-01");
   }
