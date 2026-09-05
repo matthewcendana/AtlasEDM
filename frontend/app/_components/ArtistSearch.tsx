@@ -1,10 +1,14 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { X } from "@phosphor-icons/react/dist/ssr";
-import { MIN_ARTIST_QUERY_LENGTH, searchArtists, type ArtistSuggestion } from "../_lib/artists";
+import {
+  MIN_ARTIST_QUERY_LENGTH,
+  searchArtists,
+  type ArtistSuggestion,
+} from "../_lib/artists";
 import { useDebouncedValue } from "../_lib/useDebouncedValue";
 import { LoadingSpinner } from "./LoadingSpinner";
+import { IconButton } from "./ui/IconButton";
 
 interface ArtistSearchProps {
   selected: ArtistSuggestion[];
@@ -78,17 +82,10 @@ export function ArtistSearch({ selected, onChange }: ArtistSearchProps) {
           {selected.map((artist) => (
             <li
               key={artist.id}
-              className="flex items-center gap-1 rounded-full bg-white py-1.5 pl-3 pr-2 text-sm text-zinc-700 shadow-[0_1px_2px_rgba(0,0,0,0.04)]"
+              className="flex items-center gap-1 rounded-full bg-surface py-1.5 pl-3 pr-2 text-sm text-text-primary shadow-[0_1px_2px_rgba(0,0,0,0.04)]"
             >
               {artist.name}
-              <button
-                type="button"
-                aria-label={`Remove ${artist.name}`}
-                onClick={() => handleRemove(artist.id)}
-                className="text-zinc-400 hover:text-zinc-900"
-              >
-                <X size={14} weight="bold" />
-              </button>
+              <IconButton label={`Remove ${artist.name}`} onClick={() => handleRemove(artist.id)} size={14} />
             </li>
           ))}
         </ul>
@@ -98,41 +95,44 @@ export function ArtistSearch({ selected, onChange }: ArtistSearchProps) {
         <input
           id="artist-search"
           type="text"
-          placeholder={atMax ? `Up to ${MAX_ARTISTS} artists` : "Search artists (optional)"}
+          placeholder={atMax ? `Up to ${MAX_ARTISTS} artists` : "Search artists"}
           value={query}
           disabled={atMax}
           onChange={(e) => setQuery(e.target.value)}
           onFocus={() => setIsOpen(true)}
           onBlur={() => setTimeout(() => setIsOpen(false), 150)}
-          className="w-full rounded-full bg-white py-3 pl-6 pr-6 text-sm text-zinc-900 shadow-[0_1px_2px_rgba(0,0,0,0.04),0_8px_24px_rgba(0,0,0,0.06)] outline-none placeholder:text-zinc-400 focus-visible:ring-2 focus-visible:ring-zinc-900/10 disabled:opacity-60"
+          className="w-full rounded-full bg-surface py-3 pl-6 pr-6 text-sm text-text-primary shadow-[0_1px_2px_rgba(0,0,0,0.04),0_8px_24px_rgba(0,0,0,0.06)] outline-none placeholder:text-zinc-400 focus-visible:ring-2 focus-visible:ring-text-primary/10 disabled:opacity-60"
         />
 
         {isOpen &&
           !atMax &&
           debouncedQuery.trim().length >= MIN_ARTIST_QUERY_LENGTH &&
           (isLoading || suggestions.length > 0 || error) && (
-          <ul className="absolute z-10 mt-2 w-full overflow-hidden rounded-2xl bg-white py-2 shadow-[0_1px_2px_rgba(0,0,0,0.04),0_8px_24px_rgba(0,0,0,0.08)]">
-            {isLoading && (
-              <li className="flex items-center gap-2 px-6 py-2 text-sm text-zinc-400">
-                <LoadingSpinner size={14} />
-                Searching…
-              </li>
-            )}
-            {!isLoading && error && <li className="px-6 py-2 text-sm text-red-500">{error}</li>}
-            {!isLoading && suggestions.map((artist) => (
-              <li key={artist.id}>
-                <button
-                  type="button"
-                  onMouseDown={(e) => e.preventDefault()}
-                  onClick={() => handleSelect(artist)}
-                  className="w-full px-6 py-2 text-left text-sm text-zinc-700 hover:bg-panel-light"
-                >
-                  {artist.name}
-                </button>
-              </li>
-            ))}
-          </ul>
-        )}
+            <ul className="absolute z-10 mt-2 w-full overflow-hidden rounded-2xl bg-surface py-2 shadow-[0_1px_2px_rgba(0,0,0,0.04),0_8px_24px_rgba(0,0,0,0.08)]">
+              {isLoading && (
+                <li className="flex items-center gap-2 px-6 py-2 text-sm text-zinc-400">
+                  <LoadingSpinner size={14} />
+                  Searching…
+                </li>
+              )}
+              {!isLoading && error && (
+                <li className="px-6 py-2 text-sm text-red-500">{error}</li>
+              )}
+              {!isLoading &&
+                suggestions.map((artist) => (
+                  <li key={artist.id}>
+                    <button
+                      type="button"
+                      onMouseDown={(e) => e.preventDefault()}
+                      onClick={() => handleSelect(artist)}
+                      className="w-full px-6 py-2 text-left text-sm text-text-primary hover:bg-surface-sunken"
+                    >
+                      {artist.name}
+                    </button>
+                  </li>
+                ))}
+            </ul>
+          )}
       </div>
     </div>
   );

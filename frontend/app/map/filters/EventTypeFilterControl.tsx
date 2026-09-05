@@ -1,9 +1,10 @@
 "use client";
 
-import { Check, Ticket } from "@phosphor-icons/react/dist/ssr";
+import { Ticket } from "@phosphor-icons/react/dist/ssr";
 import { ALL_EVENT_TYPES } from "../../_lib/mapFilters";
 import type { EventType } from "../../_lib/events";
 import { FilterPopoverButton } from "./FilterPopoverButton";
+import { CheckboxList } from "../../_components/ui/CheckboxList";
 
 const OPTIONS: { value: EventType; label: string }[] = [
   { value: "festival", label: "Festival" },
@@ -47,35 +48,7 @@ export function EventTypeFilterControl({
       onToggle={onToggle}
       onClose={onClose}
     >
-      <p className="mb-3 text-xs font-semibold uppercase tracking-wide text-zinc-400">
-        Event type
-      </p>
-      <div className="flex flex-col gap-1.5">
-        {OPTIONS.map((option) => {
-          const isChecked = eventTypes.includes(option.value);
-          return (
-            <button
-              key={option.value}
-              type="button"
-              role="checkbox"
-              aria-checked={isChecked}
-              onClick={() => toggle(option.value)}
-              className={`flex items-center gap-3 rounded-xl px-4 py-2.5 text-left text-sm font-semibold transition-colors ${
-                isChecked ? "bg-panel-light text-zinc-950" : "text-zinc-400 hover:bg-panel-light"
-              }`}
-            >
-              <span
-                className={`flex h-5 w-5 shrink-0 items-center justify-center rounded-md border-2 ${
-                  isChecked ? "border-accent bg-accent" : "border-zinc-300"
-                }`}
-              >
-                {isChecked && <Check size={12} weight="bold" className="text-white" />}
-              </span>
-              {option.label}
-            </button>
-          );
-        })}
-      </div>
+      <CheckboxList heading="Event type" options={OPTIONS} selected={eventTypes} onToggle={toggle} />
     </FilterPopoverButton>
   );
 }

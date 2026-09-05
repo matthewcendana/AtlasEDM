@@ -31,7 +31,7 @@ export function ArtistFilterControl({
       onToggle={onToggle}
       onClose={onClose}
     >
-      <p className="mb-3 text-xs font-semibold uppercase tracking-wide text-zinc-400">
+      <p className="mb-3 text-xs font-semibold uppercase tracking-wide text-text-secondary">
         Filter by artist
       </p>
       <ArtistSearch selected={artists} onChange={onChange} />

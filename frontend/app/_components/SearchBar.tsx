@@ -29,7 +29,7 @@ export function SearchBar() {
       <button
         type="submit"
         disabled={!location}
-        className="w-fit rounded-full bg-zinc-950 px-6 py-3 text-sm font-semibold text-white transition-opacity disabled:cursor-not-allowed disabled:opacity-40"
+        className="w-fit rounded-full bg-accent px-6 py-3 text-sm font-semibold text-white transition-opacity disabled:cursor-not-allowed disabled:opacity-40"
       >
         Search
       </button>

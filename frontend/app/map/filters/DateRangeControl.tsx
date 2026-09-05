@@ -1,8 +1,9 @@
 "use client";
 
 import { useState } from "react";
-import { CalendarBlank, CaretLeft, CaretRight, X } from "@phosphor-icons/react/dist/ssr";
+import { CalendarBlank, CaretLeft, CaretRight } from "@phosphor-icons/react/dist/ssr";
 import { FilterPopoverButton } from "./FilterPopoverButton";
+import { IconButton } from "../../_components/ui/IconButton";
 
 const WEEKDAY_LABELS = ["S", "M", "T", "W", "T", "F", "S"];
 
@@ -61,24 +62,24 @@ function MiniCalendar({ selected, onSelect }: MiniCalendarProps) {
   const cells = buildCalendarGrid(viewMonth);
 
   return (
-    <div className="mt-2 w-64 rounded-2xl bg-panel-light p-3">
+    <div className="mt-2 w-64 rounded-2xl bg-surface-sunken p-3">
       <div className="mb-2 flex items-center justify-between">
         <button
           type="button"
           aria-label="Previous month"
           onClick={() => setViewMonth((m) => addMonths(m, -1))}
-          className="flex h-6 w-6 items-center justify-center rounded-full text-zinc-500 hover:bg-white"
+          className="flex h-6 w-6 items-center justify-center rounded-full text-text-secondary hover:bg-surface"
         >
           <CaretLeft size={13} weight="bold" />
         </button>
-        <p className="text-xs font-semibold text-zinc-950">
+        <p className="text-xs font-semibold text-text-primary">
           {viewMonth.toLocaleDateString(undefined, { month: "long", year: "numeric" })}
         </p>
         <button
           type="button"
           aria-label="Next month"
           onClick={() => setViewMonth((m) => addMonths(m, 1))}
-          className="flex h-6 w-6 items-center justify-center rounded-full text-zinc-500 hover:bg-white"
+          className="flex h-6 w-6 items-center justify-center rounded-full text-text-secondary hover:bg-surface"
         >
           <CaretRight size={13} weight="bold" />
         </button>
@@ -86,7 +87,7 @@ function MiniCalendar({ selected, onSelect }: MiniCalendarProps) {
 
       <div className="grid grid-cols-7 gap-y-1 text-center">
         {WEEKDAY_LABELS.map((weekday, i) => (
-          <span key={i} className="text-[10px] font-semibold text-zinc-400">
+          <span key={i} className="text-[10px] font-semibold text-text-secondary">
             {weekday}
           </span>
         ))}
@@ -100,7 +101,7 @@ function MiniCalendar({ selected, onSelect }: MiniCalendarProps) {
               type="button"
               onClick={() => onSelect(iso)}
               className={`flex h-7 w-7 items-center justify-center justify-self-center rounded-full text-xs font-medium transition-colors ${
-                isSelected ? "bg-accent text-white" : "text-zinc-700 hover:bg-white"
+                isSelected ? "bg-accent text-white" : "text-text-primary hover:bg-surface"
               }`}
             >
               {day.getDate()}
@@ -126,28 +127,19 @@ interface SingleDateFieldProps {
 function SingleDateField({ label, value, onChange, isOpen, onToggle }: SingleDateFieldProps) {
   return (
     <div>
-      <p className="mb-1.5 text-xs font-semibold uppercase tracking-wide text-zinc-400">{label}</p>
+      <p className="mb-1.5 text-xs font-semibold uppercase tracking-wide text-text-secondary">{label}</p>
       <div className="flex items-center gap-1.5">
         <button
           type="button"
           onClick={onToggle}
           className={`flex flex-1 items-center gap-2 rounded-xl px-3 py-2 text-left text-sm font-semibold transition-colors ${
-            value ? "bg-accent/10 text-zinc-950" : "bg-panel-light text-zinc-400"
+            value ? "bg-accent/10 text-text-primary" : "bg-surface-sunken text-zinc-400"
           }`}
         >
           <CalendarBlank size={15} weight={value ? "fill" : "regular"} className={value ? "text-accent" : ""} />
           {value ? formatShort(value) : "Any date"}
         </button>
-        {value && (
-          <button
-            type="button"
-            aria-label={`Clear ${label.toLowerCase()}`}
-            onClick={() => onChange(null)}
-            className="text-zinc-400 hover:text-zinc-700"
-          >
-            <X size={14} weight="bold" />
-          </button>
-        )}
+        {value && <IconButton label={`Clear ${label.toLowerCase()}`} onClick={() => onChange(null)} size={14} />}
       </div>
       {isOpen && (
         <MiniCalendar
@@ -184,7 +176,7 @@ export function DateRangeControl({
 
   const label =
     startDate && endDate
-      ? `${formatShort(startDate)} – ${formatShort(endDate)}`
+      ? `${formatShort(startDate)} - ${formatShort(endDate)}`
       : startDate
         ? `From ${formatShort(startDate)}`
         : endDate
@@ -227,7 +219,7 @@ export function DateRangeControl({
             onChange(null, null);
             setOpenField(null);
           }}
-          className="mt-4 text-xs font-semibold text-zinc-400 hover:text-zinc-700"
+          className="mt-4 text-xs font-semibold text-zinc-400 hover:text-text-primary"
         >
           Clear dates
         </button>

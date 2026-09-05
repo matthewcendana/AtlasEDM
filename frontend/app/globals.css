@@ -4,6 +4,27 @@
   --color-panel-light: #f3f2f8;
   --color-panel-dark: #19191b;
   --color-accent: #e8368f;
+
+  /* Semantic surface/text tokens - components should reach for these instead of
+     hardcoding zinc shades or white directly, so light/dark both fall out of one
+     swap here rather than a dark-variant class repeated on every element. */
+  --color-surface: #ffffff;
+  --color-surface-sunken: var(--color-panel-light);
+  --color-text-primary: #18181b;
+  --color-text-secondary: #71717a;
+  --color-border: #f4f4f5;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    /* Reuses the existing panel-dark value rather than inventing a second dark
+       color - the globe side panel and the rest of the app share one dark surface. */
+    --color-surface: var(--color-panel-dark);
+    --color-surface-sunken: #232326;
+    --color-text-primary: #fafafa;
+    --color-text-secondary: #a1a1aa;
+    --color-border: #2d2d31;
+  }
 }
 
 @theme inline {
@@ -11,9 +32,38 @@
   --color-panel-light: var(--color-panel-light);
   --color-panel-dark: var(--color-panel-dark);
   --color-accent: var(--color-accent);
+  --color-surface: var(--color-surface);
+  --color-surface-sunken: var(--color-surface-sunken);
+  --color-text-primary: var(--color-text-primary);
+  --color-text-secondary: var(--color-text-secondary);
+  --color-border: var(--color-border);
 }
 
 body {
-  background: var(--color-panel-light);
+  background: var(--color-surface-sunken);
+  color: var(--color-text-primary);
   font-family: var(--font-sans), Arial, Helvetica, sans-serif;
+}
+
+/* Landing page hero: fade + rise on load, staggered via each element's own
+   animation-delay (see page.tsx). CSS-only rather than a JS animation library -
+   this is server-rendered content with no interactivity, so a motion library here
+   would just add an SSR/hydration-mismatch risk for no benefit over plain CSS.
+   Gated behind prefers-reduced-motion: no-preference so a reduced-motion
+   preference gets no animation at all, not a disabled/degraded one. */
+@keyframes fade-up {
+  from {
+    opacity: 0;
+    transform: translateY(12px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .animate-fade-up {
+    animation: fade-up 0.5s cubic-bezier(0.16, 1, 0.3, 1) both;
+  }
 }
