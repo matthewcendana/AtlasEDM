@@ -32,15 +32,15 @@ const VARIANT_CLASSES = {
 // The header-with-close-button shell shared by VenueDetailPanel's sidebar and
 // FestivalPopupCard's popover - same structure, different sizing/positioning.
 //
-// Only the popover variant animates in/out (fade + slight scale, matching a clicked
-// pin producing a small anchored card) - the sidebar opens instantly, same as before.
-// A motivated, restrained choice, not "motion everywhere": the popover appears next
-// to wherever the user just clicked, so a subtle materialize-in reads as feedback for
-// that click; the sidebar is a structural panel, not a momentary popup, and doesn't
-// need the same treatment. See LandingMap.tsx for the AnimatePresence boundary this
-// needs to actually animate out on close (swapping which venue is shown does NOT
-// replay the animation - only true open/close does, matching the existing
-// swap-without-closing-first interaction).
+// Both variants animate in/out: the popover fades + scales slightly (matching a
+// clicked pin producing a small anchored card), the sidebar slides in from the left
+// edge of the screen (matching a clicked venue pin opening a structural panel, not a
+// momentary popup). Transform-only (`x`), not a width/margin animation, so the
+// sidebar's already-reserved 420px flex slot doesn't resize during the animation -
+// only its own content visually slides into it. See MapView.tsx/LandingMap.tsx for
+// the AnimatePresence boundary this needs to actually animate out on close (swapping
+// which venue is shown does NOT replay the animation - only true open/close does,
+// matching the existing swap-without-closing-first interaction).
 export function Card({ variant, title, onClose, closeLabel, style, children }: CardProps) {
   const classes = VARIANT_CLASSES[variant];
   const reduceMotion = useReducedMotion();
@@ -54,10 +54,17 @@ export function Card({ variant, title, onClose, closeLabel, style, children }: C
 
   if (variant === "sidebar") {
     return (
-      <div style={style} className={classes.root}>
+      <motion.div
+        style={style}
+        className={classes.root}
+        initial={reduceMotion ? false : { x: "-100%" }}
+        animate={{ x: 0 }}
+        exit={reduceMotion ? undefined : { x: "-100%" }}
+        transition={{ duration: 0.25, ease: [0.16, 1, 0.3, 1] }}
+      >
         {header}
         {children}
-      </div>
+      </motion.div>
     );
   }
 

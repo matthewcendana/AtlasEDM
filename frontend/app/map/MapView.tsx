@@ -2,8 +2,11 @@
 
 import { useEffect, useRef, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
+import Image from "next/image";
+import Link from "next/link";
 import mapboxgl from "mapbox-gl";
 import "mapbox-gl/dist/mapbox-gl.css";
+import { AnimatePresence } from "motion/react";
 import { CircleNotch } from "@phosphor-icons/react/dist/ssr";
 import { parseMapSearchParams, type MapSearchParams } from "../_lib/eventFilters";
 import { fetchEvents, type Venue } from "../_lib/events";
@@ -12,6 +15,7 @@ import { FALLBACK_BBOX_PADDING_DEGREES, boundingBoxAroundPoint } from "../_lib/m
 import { useDebouncedValue } from "../_lib/useDebouncedValue";
 import { buildPinIcon, PIN_COLOR_DEFAULT, PIN_COLOR_SELECTED } from "../_lib/mapPinIcon";
 import { wasMapReachedByClientNavigation } from "../_lib/mapNavigation";
+import atlasEdmLogo from "../_assets/AtlasEDM-logo.png";
 import { VenueDetailPanel } from "./VenueDetailPanel";
 import { MapLocationSearch } from "./MapLocationSearch";
 import { MapLoadingIndicator } from "./MapLoadingIndicator";
@@ -478,9 +482,9 @@ function MapViewInner({ arrival }: { arrival: MapSearchParams | null }) {
           space so the map area (and everything positioned within it) starts after
           it, the way Google Maps' results panel pushes its search bar over rather
           than sitting underneath it. */}
-      {selectedVenue && (
-        <VenueDetailPanel venue={selectedVenue} onClose={() => setSelectedVenue(null)} />
-      )}
+      <AnimatePresence>
+        {selectedVenue && <VenueDetailPanel venue={selectedVenue} onClose={() => setSelectedVenue(null)} />}
+      </AnimatePresence>
 
       <div className="relative flex-1">
         {/* h-full/w-full rather than absolute+inset-0: mapbox-gl.css ships its own
@@ -497,6 +501,14 @@ function MapViewInner({ arrival }: { arrival: MapSearchParams | null }) {
           <MapLocationSearch arrival={arrival} filters={filters} />
           <MapFilterBar filters={filters} onChange={setFilters} />
         </div>
+
+        <Link
+          href="/"
+          className="absolute right-4 top-4 z-20 flex items-center gap-2 rounded-full bg-white/90 px-4 py-2 shadow-[0_1px_2px_rgba(0,0,0,0.04),0_8px_24px_rgba(0,0,0,0.12)] backdrop-blur-sm transition-opacity hover:opacity-80"
+        >
+          <span className="text-sm font-black tracking-tight text-black">AtlasEDM</span>
+          <Image src={atlasEdmLogo} alt="" className="h-5 w-auto" />
+        </Link>
 
         {isRefetching && (
           <div className="absolute bottom-4 right-4 z-20">

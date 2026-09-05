@@ -1,6 +1,6 @@
 import type { Venue } from "../_lib/events";
 import { Card } from "./ui/Card";
-import { EventRow } from "./ui/EventRow";
+import { EventCard } from "./ui/EventCard";
 
 interface FestivalPopupCardProps {
   venue: Venue;
@@ -13,8 +13,8 @@ interface FestivalPopupCardProps {
 }
 
 // Compact popup version of VenueDetailPanel's event list - same data, same
-// EventRow component (in "compact" size), sized and positioned for a small anchored
-// card next to a clicked pin rather than a full-height sidebar.
+// EventCard component (in "compact" size), sized and positioned for a small
+// anchored card next to a clicked pin rather than a full-height sidebar.
 export function FestivalPopupCard({ venue, style, onClose }: FestivalPopupCardProps) {
   const hasMoreEvents = venue.totalEventCount > venue.events.length;
 
@@ -33,7 +33,7 @@ export function FestivalPopupCard({ venue, style, onClose }: FestivalPopupCardPr
           )}
           <ul className="flex flex-col gap-2">
             {venue.events.map((event) => (
-              <EventRow key={event.id} event={event} size="compact" />
+              <EventCard key={event.id} event={event} size="compact" />
             ))}
           </ul>
         </div>
