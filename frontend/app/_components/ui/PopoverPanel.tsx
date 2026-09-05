@@ -70,11 +70,13 @@ export function PopoverPanel({
         type="button"
         onClick={onToggle}
         aria-expanded={isOpen}
-        className={`flex items-center gap-2 rounded-full py-2.5 pl-4 pr-5 text-sm font-semibold shadow-[0_1px_2px_rgba(0,0,0,0.04),0_8px_24px_rgba(0,0,0,0.12)] transition-colors ${
-          isActive ? "bg-accent text-white" : "bg-surface text-text-primary hover:bg-surface-sunken"
+        className={`flex shrink-0 items-center gap-1.5 rounded-full border px-4 py-2.5 text-xs font-semibold shadow-md transition-all ${
+          isActive
+            ? "border-accent bg-accent text-white"
+            : "border-[#2e2f3a] bg-[#1e1f26] text-white hover:border-slate-500"
         }`}
       >
-        <Icon size={18} weight={isActive ? "fill" : "regular"} />
+        <Icon size={14} weight={isActive ? "fill" : "regular"} className={isActive ? "text-white" : "text-slate-300"} />
         {label}
       </button>
 

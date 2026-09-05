@@ -2,7 +2,7 @@
 
 import type { Venue } from "../_lib/events";
 import { Card } from "../_components/ui/Card";
-import { EventRow } from "../_components/ui/EventRow";
+import { EventCard } from "../_components/ui/EventCard";
 
 interface VenueDetailPanelProps {
   venue: Venue;
@@ -27,7 +27,7 @@ export function VenueDetailPanel({ venue, onClose }: VenueDetailPanelProps) {
           )}
           <ul className="flex flex-1 flex-col gap-3 overflow-y-auto px-6 py-4">
             {venue.events.map((event) => (
-              <EventRow key={event.id} event={event} />
+              <EventCard key={event.id} event={event} />
             ))}
           </ul>
         </>

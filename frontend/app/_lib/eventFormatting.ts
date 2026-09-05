@@ -16,6 +16,28 @@ export function formatEventDate(dateIso: string): string {
   });
 }
 
+export interface EventDateParts {
+  month: string;
+  day: string;
+  weekday: string;
+}
+
+// Same manual-parse rationale as formatEventDate above (avoids the UTC-midnight
+// rollback), but split into the three pieces EventCard's standalone date badge
+// renders independently rather than one combined string.
+export function formatEventDateParts(dateIso: string): EventDateParts | null {
+  const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(dateIso);
+  if (!match) return null;
+
+  const [, year, month, day] = match;
+  const date = new Date(Number(year), Number(month) - 1, Number(day));
+  return {
+    month: date.toLocaleDateString(undefined, { month: "short" }).toUpperCase(),
+    day: String(Number(day)),
+    weekday: date.toLocaleDateString(undefined, { weekday: "short" }).toUpperCase(),
+  };
+}
+
 // The backend's startTime is frequently null in practice (Edmtrain doesn't always
 // have it) — callers should treat a null return as "no time to show", not an error.
 export function formatEventTime(startTime: string | null): string | null {
