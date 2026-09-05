@@ -7,6 +7,7 @@ import { ArtistSearch } from "./ArtistSearch";
 import type { LocationSuggestion } from "../_lib/mapbox";
 import type { ArtistSuggestion } from "../_lib/artists";
 import { buildMapSearchParams } from "../_lib/eventFilters";
+import { markMapClientNavigation } from "../_lib/mapNavigation";
 
 export function SearchBar() {
   const router = useRouter();
@@ -18,6 +19,7 @@ export function SearchBar() {
     if (!location) return;
 
     const params = buildMapSearchParams(location, artists);
+    markMapClientNavigation();
     router.push(`/map?${params.toString()}`);
   }
 

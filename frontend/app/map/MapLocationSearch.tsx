@@ -6,6 +6,7 @@ import { LocationSearch } from "../_components/LocationSearch";
 import type { LocationSuggestion } from "../_lib/mapbox";
 import { buildMapSearchParams, type MapSearchParams } from "../_lib/eventFilters";
 import type { MapFilterState } from "../_lib/mapFilters";
+import { markMapClientNavigation } from "../_lib/mapNavigation";
 
 interface MapLocationSearchProps {
   // The location this map instance actually arrived at (null for a direct /map
@@ -63,6 +64,7 @@ export function MapLocationSearch({ arrival, filters }: MapLocationSearchProps) 
       ageCategories: filters.ageCategories,
       eventTypes: filters.eventTypes,
     });
+    markMapClientNavigation();
     router.push(`/map?${params.toString()}`);
   }
 

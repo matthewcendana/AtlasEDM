@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { useSearchParams } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import mapboxgl from "mapbox-gl";
 import "mapbox-gl/dist/mapbox-gl.css";
 import { CircleNotch } from "@phosphor-icons/react/dist/ssr";
@@ -11,6 +11,7 @@ import { initialMapFilters, mapFiltersToEventParams, type MapFilterState } from 
 import { FALLBACK_BBOX_PADDING_DEGREES, boundingBoxAroundPoint } from "../_lib/mapbox";
 import { useDebouncedValue } from "../_lib/useDebouncedValue";
 import { buildPinIcon, PIN_COLOR_DEFAULT, PIN_COLOR_SELECTED } from "../_lib/mapPinIcon";
+import { wasMapReachedByClientNavigation } from "../_lib/mapNavigation";
 import { VenueDetailPanel } from "./VenueDetailPanel";
 import { MapLocationSearch } from "./MapLocationSearch";
 import { MapLoadingIndicator } from "./MapLoadingIndicator";
@@ -79,9 +80,33 @@ function venuesToGeoJSON(venues: Venue[]): GeoJSON.FeatureCollection<GeoJSON.Poi
 const LIVE_LAYER_ID = "live-venue-pins";
 const SELECTED_LAYER_ID = "selected-venue-pin";
 
+// A real browser refresh (Cmd/Ctrl+R) re-runs this module from scratch, so
+// wasMapReachedByClientNavigation() is false and this is the only signal left to
+// consult: the Navigation Timing API's entry `type`, which is "reload" only for an
+// actual reload of the currently-loaded document — never for a client-side
+// `router.push`, which doesn't create a new navigation entry at all. A direct/typed
+// visit or a shared link lands here as "navigate", not "reload", so it's
+// deliberately treated the same as before this change (falls through to MapView's
+// existing no-arrival default view) — only a genuine refresh should bounce to `/`.
+// Computed synchronously in useState's initializer (not an effect) so there's no
+// render where a soon-to-be-redirected page flashes on screen first.
+function shouldRenderMapOnMount(): boolean {
+  if (wasMapReachedByClientNavigation()) return true;
+  const [entry] = performance.getEntriesByType("navigation") as PerformanceNavigationTiming[];
+  return entry?.type !== "reload";
+}
+
 export function MapView() {
+  const router = useRouter();
   const searchParams = useSearchParams();
   const arrival = parseMapSearchParams(searchParams);
+  const [allowed] = useState(shouldRenderMapOnMount);
+
+  useEffect(() => {
+    if (!allowed) router.replace("/");
+  }, [allowed, router]);
+
+  if (!allowed) return null;
 
   // Keyed on the full query string so a brand-new search — whether from the landing
   // page or the on-map location search box — fully remounts the map below: fresh
