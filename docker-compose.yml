@@ -1,11 +1,27 @@
+# Resource limits below are sized for a small 2 vCPU / 4GB VPS-scale host, deliberately
+# summing to less than that (1.7 cpus / 2304M) rather than the full amount — Docker
+# `cpus`/`memory` limits are hard ceilings, not reservations, so leaving headroom means
+# the host OS and the Docker daemon itself always have room even if every container
+# bursts to its limit at once. Postgres gets the largest share since it's the actual
+# stateful bottleneck (index maintenance + PostGIS geometry writes during sync are the
+# heaviest CPU consumer in the stack); backend is next since it's the live user-facing
+# path and must stay responsive under load; redis is cheap since it only holds a small
+# short-TTL response cache; sync gets the smallest deliberate cap since it's the exact
+# batch job this is meant to keep from starving everything else — capped, an
+# inefficient run gets cgroup-throttled and takes longer, rather than starving Postgres
+# or the backend on a shared host.
 services:
   postgres:
     image: postgis/postgis:16-3.4-alpine
     container_name: atlasedm-postgres
     restart: unless-stopped
     env_file: .env
-    ports:
-      - "5433:5432"
+    # No host port mapping: only reachable from other containers on this Compose
+    # network (as "postgres"), not from the host or the outside network at all. For
+    # manual queries, use `docker compose exec postgres psql -U $POSTGRES_USER -d
+    # $POSTGRES_DB` instead of a client connecting over a published port.
+    expose:
+      - "5432"
     volumes:
       - pgdata:/var/lib/postgresql/data
       - ./migrations:/docker-entrypoint-initdb.d
@@ -14,13 +30,20 @@ services:
       interval: 5s
       timeout: 5s
       retries: 5
+    deploy:
+      resources:
+        limits:
+          cpus: "0.7"
+          memory: 1024M
 
   redis:
     image: redis:7-alpine
     container_name: atlasedm-redis
     restart: unless-stopped
-    ports:
-      - "6379:6379"
+    # No host port mapping — same reasoning as postgres above. Only the backend talks
+    # to this, over the Compose network as "redis".
+    expose:
+      - "6379"
     volumes:
       - redisdata:/data
     healthcheck:
@@ -28,20 +51,22 @@ services:
       interval: 5s
       timeout: 5s
       retries: 5
+    deploy:
+      resources:
+        limits:
+          cpus: "0.2"
+          memory: 256M
 
   backend:
     build: ./backend
     container_name: atlasedm-backend
     restart: unless-stopped
     env_file: .env
-    # .env's POSTGRES_HOST/PORT and REDIS_HOST/PORT are written for *host* access
-    # (localhost, plus Postgres's host-remapped 5433 — see the postgres service's
-    # port mapping above). Inside the Compose network, sibling containers are reached
-    # by service name, and always on the container's own internal port, never a
-    # host-side remap — Postgres's own internal port is still 5432 regardless of what
-    # host port 5433 forwards to. These four overrides are the one place that
-    # distinction actually matters; everything else (credentials, ALLOWED_ORIGIN,
-    # EVENTS_CACHE_TTL_SECONDS, BACKEND_PORT) still comes from the shared .env as-is.
+    # Postgres/Redis are reached by service name over the Compose network, always on
+    # their container-internal port (5432/6379) — never a host-side remap, since
+    # neither is published to the host anymore. Everything else (credentials,
+    # ALLOWED_ORIGIN, EVENTS_CACHE_TTL_SECONDS, BACKEND_PORT) still comes from the
+    # shared .env as-is.
     environment:
       POSTGRES_HOST: postgres
       POSTGRES_PORT: 5432
@@ -54,6 +79,36 @@ services:
         condition: service_healthy
       redis:
         condition: service_healthy
+    deploy:
+      resources:
+        limits:
+          cpus: "0.5"
+          memory: 512M
+
+  # One-off daily sync job (see sync/run_sync.sh, cron at 3am) — not started by
+  # `docker compose up`. Kept out of the default `up` set via `profiles` and invoked
+  # explicitly with `docker compose run --rm sync`. Runs inside the Compose network so
+  # it reaches Postgres by service name, exactly like the backend does, instead of
+  # needing a host-published Postgres port just for this one daily script.
+  sync:
+    build:
+      context: .
+      dockerfile: sync/Dockerfile
+    container_name: atlasedm-sync
+    env_file: .env
+    environment:
+      POSTGRES_HOST: postgres
+      POSTGRES_PORT: 5432
+    profiles:
+      - sync
+    depends_on:
+      postgres:
+        condition: service_healthy
+    deploy:
+      resources:
+        limits:
+          cpus: "0.3"
+          memory: 512M
 
 volumes:
   pgdata:
