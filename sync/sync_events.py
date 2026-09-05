@@ -37,6 +37,17 @@ log = logging.getLogger("sync_events")
 EDMTRAIN_EVENTS_URL = "https://edmtrain.com/api/events"
 REQUEST_TIMEOUT_SECONDS = 30
 
+# A commit forces an fsync, so committing once per event (thousands of times on a full
+# sync) was a real, unbounded source of I/O/CPU overhead - the actual likely cause of
+# the sync-time CPU spikes the handoff doc calls out, more so than the queries
+# themselves. Batching cuts that ~200x on a full run while keeping the same per-event
+# failure isolation via a SAVEPOINT per event (see process_event/main below): one bad
+# event only loses its own SAVEPOINT, not the rest of the batch. The one tradeoff is
+# that a hard crash mid-batch can lose up to (EVENTS_PER_COMMIT - 1) already-upserted
+# events for this run - harmless here since every upsert is ON CONFLICT DO UPDATE and
+# the next run's createdStartDate window will simply re-fetch and re-apply them.
+EVENTS_PER_COMMIT = 200
+
 
 def get_db_connection():
     return psycopg2.connect(
@@ -261,15 +272,14 @@ def sync_event_artists(cur, event_id, artist_list):
         )
 
 
-def process_event(conn, event, flagship_patterns):
-    """Upserts a single event (and its venue/artists) in its own transaction."""
-    with conn.cursor() as cur:
-        venue = event.get("venue")
-        venue_id = upsert_venue(cur, venue)
-        venue_name = (venue or {}).get("name")
-        event_id = upsert_event(cur, event, venue_id, venue_name, flagship_patterns)
-        sync_event_artists(cur, event_id, event.get("artistList") or [])
-    conn.commit()
+def process_event(cur, event, flagship_patterns):
+    """Upserts a single event (and its venue/artists). Caller owns the transaction and
+    commit boundary - see main()'s per-event SAVEPOINT/batched-commit loop."""
+    venue = event.get("venue")
+    venue_id = upsert_venue(cur, venue)
+    venue_name = (venue or {}).get("name")
+    event_id = upsert_event(cur, event, venue_id, venue_name, flagship_patterns)
+    sync_event_artists(cur, event_id, event.get("artistList") or [])
 
 
 def write_sync_log(conn, status, events_upserted, error_message=None):
@@ -307,22 +317,34 @@ def main():
         events_fetched = len(events)
         log.info("Fetched %d event(s) from Edmtrain", events_fetched)
 
-        for event in events:
-            try:
-                process_event(conn, event, flagship_patterns)
-                events_upserted += 1
-            except Exception:
-                conn.rollback()
-                events_failed += 1
-                log.exception("Failed to upsert event id=%s", event.get("id"))
+        commits = 0
+        with conn.cursor() as cur:
+            for i, event in enumerate(events, start=1):
+                cur.execute("SAVEPOINT sync_event")
+                try:
+                    process_event(cur, event, flagship_patterns)
+                    cur.execute("RELEASE SAVEPOINT sync_event")
+                    events_upserted += 1
+                except Exception:
+                    cur.execute("ROLLBACK TO SAVEPOINT sync_event")
+                    events_failed += 1
+                    log.exception("Failed to upsert event id=%s", event.get("id"))
+
+                if i % EVENTS_PER_COMMIT == 0:
+                    conn.commit()
+                    commits += 1
+
+            conn.commit()  # flush whatever's left in the final partial batch
+            commits += 1
 
         write_sync_log(conn, status="success", events_upserted=events_upserted)
 
         log.info(
-            "Sync complete — fetched: %d, upserted: %d, failed: %d",
+            "Sync complete — fetched: %d, upserted: %d, failed: %d, commits: %d",
             events_fetched,
             events_upserted,
             events_failed,
+            commits,
         )
 
     except Exception as exc:
