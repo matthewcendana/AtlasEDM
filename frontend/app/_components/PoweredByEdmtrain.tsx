@@ -3,9 +3,14 @@ import edmtrainLogo from "../_assets/edmtrain-logo.png";
 
 export function PoweredByEdmtrain() {
   return (
-    <div className="flex items-center gap-2 text-sm text-text-secondary">
+    <a
+      href="https://edmtrain.com/"
+      target="_blank"
+      rel="noopener noreferrer"
+      className="flex w-fit items-center gap-2 text-base text-text-secondary transition-colors hover:text-text-primary"
+    >
       <span>Powered by Edmtrain</span>
-      <Image src={edmtrainLogo} alt="" className="h-4 w-auto" />
-    </div>
+      <Image src={edmtrainLogo} alt="" className="h-5 w-auto" />
+    </a>
   );
 }

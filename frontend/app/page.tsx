@@ -10,11 +10,11 @@ export default function Home() {
       <section className="flex w-full flex-col bg-surface-sunken px-8 py-10 md:min-h-screen md:w-1/2 md:px-20 md:py-14 lg:px-28">
         <div className="flex flex-1 flex-col justify-center gap-10">
           <div className="animate-fade-up flex flex-col gap-4">
-            <div className="flex items-center gap-3">
+            <div className="flex items-center gap-1">
               <h1 className="text-6xl font-black tracking-tight text-text-primary sm:text-7xl">
                 AtlasEDM
               </h1>
-              <Image src={atlasEdmLogo} alt="" priority className="h-12 w-auto sm:h-14" />
+              <Image src={atlasEdmLogo} alt="" priority className="h-16 w-auto sm:h-20" />
             </div>
             <p className="max-w-lg text-lg text-text-secondary">
               An interactive map of upcoming EDM events and festivals

@@ -16,6 +16,7 @@ import { useDebouncedValue } from "../_lib/useDebouncedValue";
 import { buildPinIcon, PIN_COLOR_DEFAULT, PIN_COLOR_SELECTED } from "../_lib/mapPinIcon";
 import { wasMapReachedByClientNavigation } from "../_lib/mapNavigation";
 import atlasEdmLogo from "../_assets/AtlasEDM-logo.png";
+import { Tooltip } from "../_components/ui/Tooltip";
 import { VenueDetailPanel } from "./VenueDetailPanel";
 import { MapLocationSearch } from "./MapLocationSearch";
 import { MapLoadingIndicator } from "./MapLoadingIndicator";
@@ -497,18 +498,26 @@ function MapViewInner({ arrival }: { arrival: MapSearchParams | null }) {
             wins. */}
         <div ref={containerRef} className="h-full w-full" />
 
-        <div className="absolute left-4 right-4 top-4 z-20 flex flex-col items-start gap-3">
-          <MapLocationSearch arrival={arrival} filters={filters} />
-          <MapFilterBar filters={filters} onChange={setFilters} />
+        {/* pointer-events-none here, re-enabled per-child below: this row spans the
+            full map width so MapFilterBar's chips have room to wrap, but the row's
+            own empty space (to the right of the search box/chips) shouldn't swallow
+            clicks meant for map pins underneath it. */}
+        <div className="pointer-events-none absolute left-4 right-4 top-4 z-20 flex flex-col items-start gap-3">
+          <div className="pointer-events-auto">
+            <MapLocationSearch arrival={arrival} filters={filters} />
+          </div>
+          <div className="pointer-events-auto">
+            <MapFilterBar filters={filters} onChange={setFilters} />
+          </div>
         </div>
 
-        <Link
-          href="/"
-          className="absolute right-4 top-4 z-20 flex items-center gap-2 rounded-full bg-white/90 px-4 py-2 shadow-[0_1px_2px_rgba(0,0,0,0.04),0_8px_24px_rgba(0,0,0,0.12)] backdrop-blur-sm transition-opacity hover:opacity-80"
-        >
-          <span className="text-sm font-black tracking-tight text-black">AtlasEDM</span>
-          <Image src={atlasEdmLogo} alt="" className="h-5 w-auto" />
-        </Link>
+        <div className="absolute right-4 top-4 z-20">
+          <Tooltip label="Return to Home" side="left">
+            <Link href="/" aria-label="Return to Home" className="block transition-opacity hover:opacity-80">
+              <Image src={atlasEdmLogo} alt="" className="h-16 w-auto" />
+            </Link>
+          </Tooltip>
+        </div>
 
         {isRefetching && (
           <div className="absolute bottom-4 right-4 z-20">

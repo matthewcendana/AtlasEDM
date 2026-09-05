@@ -69,8 +69,8 @@ export function MapLocationSearch({ arrival, filters }: MapLocationSearchProps) 
   }
 
   return (
-    <div className="w-full max-w-sm">
-      <LocationSearch selected={selected} onSelect={handleSelect} />
+    <div className="w-full max-w-lg">
+      <LocationSearch selected={selected} onSelect={handleSelect} size="large" />
     </div>
   );
 }

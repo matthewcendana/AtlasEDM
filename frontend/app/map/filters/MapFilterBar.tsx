@@ -80,9 +80,9 @@ export function MapFilterBar({ filters, onChange }: MapFilterBarProps) {
             setOpenFilter(null);
             onChange(EMPTY_MAP_FILTERS);
           }}
-          className="flex items-center gap-1.5 rounded-full bg-zinc-950/80 px-4 py-2.5 text-xs font-semibold text-white backdrop-blur-sm transition-opacity hover:bg-zinc-950"
+          className="flex items-center gap-2 rounded-full bg-zinc-950/80 px-5 py-3 text-sm font-semibold text-white backdrop-blur-sm transition-opacity hover:bg-zinc-950"
         >
-          <ArrowCounterClockwise size={14} weight="bold" />
+          <ArrowCounterClockwise size={18} weight="bold" />
           Clear filters
         </button>
       )}

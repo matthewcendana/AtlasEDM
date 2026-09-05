@@ -14,8 +14,8 @@ interface PopoverPanelProps {
   children: React.ReactNode;
   // Which side the dropdown hangs from below the trigger. Defaults to the trigger's
   // own left edge (Google Maps-style filter chips read left to right, so a dropdown
-  // opening further right and downward reads naturally); the rightmost chip in the
-  // row aligns its dropdown to the right edge instead so it doesn't run off-screen.
+  // opening further right and downward reads naturally); the rightmost chip in a row
+  // aligns its dropdown to the right edge instead so it doesn't run off-screen.
   align?: "left" | "right";
 }
 
@@ -70,13 +70,13 @@ export function PopoverPanel({
         type="button"
         onClick={onToggle}
         aria-expanded={isOpen}
-        className={`flex shrink-0 items-center gap-1.5 rounded-full border px-4 py-2.5 text-xs font-semibold shadow-md transition-all ${
+        className={`flex shrink-0 items-center gap-2 rounded-full border px-5 py-3 text-sm font-semibold shadow-md transition-all ${
           isActive
             ? "border-accent bg-accent text-white"
             : "border-[#2e2f3a] bg-[#1e1f26] text-white hover:border-slate-500"
         }`}
       >
-        <Icon size={14} weight={isActive ? "fill" : "regular"} className={isActive ? "text-white" : "text-slate-300"} />
+        <Icon size={18} weight={isActive ? "fill" : "regular"} className={isActive ? "text-white" : "text-slate-300"} />
         {label}
       </button>
 
