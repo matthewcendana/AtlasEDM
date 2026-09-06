@@ -123,7 +123,6 @@ export function parseMapSearchParams(searchParams: URLSearchParams): MapSearchPa
   const artistNames = searchParams.getAll("artistName");
   const artists: ArtistSuggestion[] = artistIds.map((id, i) => ({
     id,
-    edmtrainId: 0,
     name: artistNames[i] ?? `Artist ${id}`,
   }));
 

@@ -6,13 +6,11 @@ export const MIN_ARTIST_QUERY_LENGTH = 2;
 
 export interface ArtistSuggestion {
   id: number;
-  edmtrainId: number;
   name: string;
 }
 
 interface ArtistSearchResponseArtist {
   id: number;
-  edmtrain_id: number;
   name: string;
 }
 
@@ -36,7 +34,6 @@ export async function searchArtists(
 
   return (data.artists ?? []).map((artist) => ({
     id: artist.id,
-    edmtrainId: artist.edmtrain_id,
     name: artist.name,
   }));
 }
