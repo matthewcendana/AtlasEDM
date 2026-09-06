@@ -43,7 +43,7 @@ RUN cmake -S /tmp/drogon -B /tmp/drogon/build \
         -DBUILD_REDIS=ON \
         -DBUILD_TESTING=OFF \
         -DBUILD_EXAMPLES=OFF \
-    && cmake --build /tmp/drogon/build -j"$(nproc)" \
+    && cmake --build /tmp/drogon/build -j2 \
     && cmake --install /tmp/drogon/build \
     && rm -rf /tmp/drogon
 
@@ -61,11 +61,18 @@ COPY test ./test
 # Target just the `backend` executable specifically — the default "build everything"
 # target would also compile backend_test (Drogon's test-framework binary from
 # test/CMakeLists.txt), which the running container has no use for.
+#
+# -j2 (both this and the Drogon build above) rather than -j"$(nproc)": a build host
+# can report more CPUs than it actually has memory to back with that many parallel
+# GCC processes at once - this is exactly what happened on Render's free-tier build
+# environment, which killed the build partway through Drogon's own compile with no
+# explicit OOM message in the log, just a silent stop. Capping parallelism trades
+# some build time for peak memory that stays within what a small build host has.
 RUN cmake -S . -B build \
         -DCMAKE_BUILD_TYPE=Release \
         -DCMAKE_CXX_STANDARD=17 \
         -DCMAKE_CXX_STANDARD_REQUIRED=ON \
-    && cmake --build build --target backend -j"$(nproc)"
+    && cmake --build build --target backend -j2
 
 # --- Runtime stage -------------------------------------------------------------
 FROM debian:bookworm-slim AS runtime
