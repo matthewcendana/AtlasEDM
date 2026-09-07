@@ -1,11 +1,14 @@
 #include <drogon/drogon.h>
+#include <drogon/plugins/Hodor.h>
 #include <algorithm>
 #include <cstdlib>
 #include <iostream>
 #include <sstream>
 #include <vector>
+#include "utils/ErrorResponse.h"
 
 using namespace drogon;
+using namespace atlasedm;
 
 namespace
 {
@@ -89,6 +92,24 @@ void requireConfig(const std::vector<std::string>& allowedOrigins)
         std::exit(1);
     }
 }
+// Hodor (config.json's "plugins" array) enforces the actual per-IP limits; this just
+// swaps its default plain-text rejection body for the same { "error": true, "message":
+// "..." } shape every other endpoint already uses. setRejectResponseFactory has to be
+// called after the event loop is running (per Hodor.h's own doc comment), hence the
+// beginning advice rather than calling it directly here — app().run() below blocks.
+void setupRateLimitRejection()
+{
+    app().registerBeginningAdvice([]() {
+        auto hodor = app().getPlugin<drogon::plugin::Hodor>();
+        if (hodor)
+        {
+            hodor->setRejectResponseFactory([](const HttpRequestPtr&) {
+                return makeErrorResponse(k429TooManyRequests,
+                                          "Too many requests. Please slow down and try again shortly.");
+            });
+        }
+    });
+}
 }  // namespace
 
 int main()
@@ -98,6 +119,7 @@ int main()
     const auto allowedOrigins = parseAllowedOrigins(app().getCustomConfig()["allowed_origins"].asString());
     requireConfig(allowedOrigins);
     setupCors(allowedOrigins);
+    setupRateLimitRejection();
 
     app().run();
     return 0;

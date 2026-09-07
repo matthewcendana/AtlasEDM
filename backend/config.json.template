@@ -44,6 +44,38 @@
             "log_level": "INFO"
         }
     },
+    // Per-IP rate limiting on the three endpoints that expose Edmtrain-sourced data
+    // (see main.cc for the custom 429 response shape, matching every other error
+    // response). Deliberately excludes /health - Render's health check hits it
+    // repeatedly, and rate-limiting it could make Render think the service is down.
+    // Limits are sized around real usage: /events is hit once per map pan/zoom
+    // (debounced client-side at 400ms) so a legitimately active session can fire
+    // several requests a minute; /venues/search and /artists/search are typed,
+    // deliberate searches with a much lower natural rate.
+    "plugins": [
+        {
+            "name": "drogon::plugin::Hodor",
+            "dependencies": [],
+            "config": {
+                "algorithm": "token_bucket",
+                "time_unit": 60,
+                "sub_limits": [
+                    {
+                        "urls": ["^/events$"],
+                        "ip_capacity": 60
+                    },
+                    {
+                        "urls": ["^/venues/search$"],
+                        "ip_capacity": 20
+                    },
+                    {
+                        "urls": ["^/artists/search$"],
+                        "ip_capacity": 20
+                    }
+                ]
+            }
+        }
+    ],
     "custom_config": {
         "allowed_origins": "${ALLOWED_ORIGIN}",
         "events_cache_ttl_seconds": ${EVENTS_CACHE_TTL_SECONDS}
