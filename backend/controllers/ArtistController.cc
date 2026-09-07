@@ -29,7 +29,7 @@ void ArtistController::asyncHandleHttpRequest(const HttpRequestPtr& req, std::fu
     // table is small (a few thousand rows) so a sequential scan is fine for now. If it
     // grows large enough to matter, a pg_trgm GIN index on name would be the fix.
     static const std::string sql =
-        "SELECT id, edmtrain_id, name FROM artists WHERE name ILIKE $1 ORDER BY name LIMIT 10";
+        "SELECT id, name FROM artists WHERE name ILIKE $1 ORDER BY name LIMIT 10";
 
     auto dbClient = drogon::app().getDbClient();
     dbClient->execSqlAsync(
@@ -45,7 +45,6 @@ void ArtistController::asyncHandleHttpRequest(const HttpRequestPtr& req, std::fu
                 {
                     Json::Value artist;
                     artist["id"] = static_cast<Json::Int64>(row["id"].as<int64_t>());
-                    artist["edmtrain_id"] = static_cast<Json::Int64>(row["edmtrain_id"].as<int64_t>());
                     artist["name"] = row["name"].as<std::string>();
                     artists.append(std::move(artist));
                 }

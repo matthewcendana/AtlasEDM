@@ -1,0 +1,123 @@
+# Render Blueprint for AtlasEDM's backend stack (Postgres + Redis-compatible Key
+# Value + the Drogon backend + the daily Edmtrain sync job).
+#
+# Deliberately does NOT try to mirror docker-compose.yml 1:1 - Render has no
+# multi-container "compose stack" concept; each service below is provisioned and
+# billed independently. See docs/render-deployment.md for the full picture (what's
+# free vs. not, the free-Postgres 30-day expiration, cold starts, and the one-time
+# migration step this Blueprint doesn't automate).
+#
+# backend/Dockerfile and sync/Dockerfile are used exactly as they already are for
+# the local docker-compose stack - Render builds them the same way `docker build`
+# would, no Docker-avoidance rewrite. docker-entrypoint.sh's envsubst approach for
+# config.json already reads real environment variables, which is exactly how Render
+# injects the envVars below - no backend code changes needed to run here.
+
+databases:
+  - name: atlasedm-db
+    plan: free
+    region: oregon
+    postgresMajorVersion: "16"
+
+services:
+  - type: web
+    name: atlasedm-backend
+    runtime: docker
+    dockerfilePath: ./backend/Dockerfile
+    dockerContext: ./backend
+    plan: free
+    region: oregon
+    healthCheckPath: /health
+    envVars:
+      # Render web services must bind 0.0.0.0:$PORT; config.json.template's listener
+      # port comes from BACKEND_PORT via envsubst, so both are pinned to the same
+      # value rather than relying on Render's port auto-detection.
+      - key: PORT
+        value: "10000"
+      - key: BACKEND_PORT
+        value: "10000"
+      - key: POSTGRES_HOST
+        fromDatabase:
+          name: atlasedm-db
+          property: host
+      - key: POSTGRES_PORT
+        fromDatabase:
+          name: atlasedm-db
+          property: port
+      - key: POSTGRES_DB
+        fromDatabase:
+          name: atlasedm-db
+          property: database
+      - key: POSTGRES_USER
+        fromDatabase:
+          name: atlasedm-db
+          property: user
+      - key: POSTGRES_PASSWORD
+        fromDatabase:
+          name: atlasedm-db
+          property: password
+      - key: REDIS_HOST
+        fromService:
+          name: atlasedm-redis
+          type: keyvalue
+          property: host
+      - key: REDIS_PORT
+        fromService:
+          name: atlasedm-redis
+          type: keyvalue
+          property: port
+      # Both origins since atlasedm.com and www.atlasedm.com are both expected to be
+      # live per the Cloudflare/DNS runbook from the earlier hardening pass - confirm
+      # www is actually a live origin and drop it here if not.
+      - key: ALLOWED_ORIGIN
+        value: https://atlasedm.com,https://www.atlasedm.com
+      - key: EVENTS_CACHE_TTL_SECONDS
+        value: "1200"
+
+  - type: keyvalue
+    name: atlasedm-redis
+    plan: free
+    region: oregon
+    ipAllowList: [] # internal-only; no external connections needed
+
+  - type: cron
+    name: atlasedm-sync
+    runtime: docker
+    dockerfilePath: ./sync/Dockerfile
+    dockerContext: .
+    # No `plan: free` here - Render's Cron Jobs have no free compute tier (unlike
+    # web services/Postgres/Key Value). Left unset so Render uses its smallest
+    # default (0.5 CPU / 512MB), billed per second only while the job actually runs
+    # (a full run is ~40s; most daily incremental runs are a few seconds) - a
+    # fraction of a cent per run. Requires a payment method on file. See
+    # docs/render-deployment.md for the real cost estimate.
+    #
+    # Daily at 3am US Eastern - matches the original local cron schedule
+    # (0 3 * * *). Render cron schedules are UTC only; 3am ET is UTC-4 (EDT) or
+    # UTC-5 (EST) depending on daylight saving, so this can't track ET exactly
+    # year-round. Pinned to 7am UTC (matches 3am EDT); expect the real local time
+    # to drift by an hour for part of the year - adjust if that matters.
+    schedule: "0 7 * * *"
+    envVars:
+      - key: POSTGRES_HOST
+        fromDatabase:
+          name: atlasedm-db
+          property: host
+      - key: POSTGRES_PORT
+        fromDatabase:
+          name: atlasedm-db
+          property: port
+      - key: POSTGRES_DB
+        fromDatabase:
+          name: atlasedm-db
+          property: database
+      - key: POSTGRES_USER
+        fromDatabase:
+          name: atlasedm-db
+          property: user
+      - key: POSTGRES_PASSWORD
+        fromDatabase:
+          name: atlasedm-db
+          property: password
+      - key: EDMTRAIN_API_KEY
+        sync: false # prompted in the Render Dashboard on creation - never committed

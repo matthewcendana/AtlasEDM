@@ -230,6 +230,16 @@ __marimo__/
 .claude/
 .agents/
 
+# Markdown docs — internal-only (handoff notes, security runbooks, per-directory
+# agent-instruction files, etc.), not meant to ship in the public repo. The root
+# README.md is the sole exception; anything else named *.md anywhere in the tree is
+# excluded by default, including subdirectory READMEs.
+*.md
+!/README.md
+
+# Claude Code skill lockfile — dev-machine tooling state, not app code.
+skills-lock.json
+
 # OS / editor cruft — repo-wide, not scoped to any one subproject since Finder can
 # drop a .DS_Store into any directory it's opened, and a local dev TLS cert could
 # plausibly live next to any of the services, not just the frontend.
